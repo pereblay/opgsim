@@ -109,8 +109,8 @@ def generate_exercise(count, seed, mode='chief_marginal'):
 
 
 def public_exercise(exercise):
-    """Only hints and geometry go to the canvas, never the solution polylines."""
-    result = {k: v for k, v in exercise.items() if k != 'rays'}
+    """Only placement geometry and ray labels go to the canvas, never solution references."""
+    result = {k: v for k, v in exercise.items() if k not in ('rays', 'stop', 'front_focus', 'principal')}
     result['rays'] = [dict(id=r['id'], label=r['label']) for r in exercise['rays']]
     result['shapes'] = []
     for row in exercise['elements']:
@@ -144,65 +144,78 @@ def angle_error(a, b):
 
 
 def assess_exercise(exercise, scene):
-    """Assess positions and every bend with exact Snell/reflection, not browser data."""
+    """Explain the first actionable error per ray, avoiding downstream cascades."""
     issues, passed, markers = [], [], []
     scene = scene if isinstance(scene, dict) else {}
     placed = scene.get('placements', {})
     placed = placed if isinstance(placed, dict) else {}
     for key, target in [('object', exercise['object_x'])]+[(e['name'], e['position']) for e in exercise['elements']]:
+        name = 'el objeto O' if key == 'object' else f'el elemento {key}'
         point = _point(placed.get(key))
         if point is None:
-            issues.append(f'Coloca {"el objeto O" if key == "object" else key} sobre el eje en x={target:g} mm.')
+            issues.append(f'Falta colocar {name}. Selecciona su herramienta y haz clic sobre el eje óptico en x = {target:g} mm, y = 0 mm. Después podrás empezar a trazar los rayos.')
         elif abs(point[0]-target) > POSITION_TOL or abs(point[1]) > POSITION_TOL:
-            issues.append(f'{key}: posición incorrecta; sitúalo en x={target:g} mm, y=0 mm.')
-            markers.append(dict(point=point.tolist(), label=key))
+            issues.append(f'Has colocado {name} en una posición incorrecta: x = {point[0]:.2f} mm, y = {point[1]:.2f} mm. Según el enunciado debe estar en x = {target:g} mm, y = 0 mm. Vuelve a seleccionar su herramienta y colócalo allí; al moverlo se borrarán los rayos para que puedas trazarlos sobre el montaje corregido.')
         else:
-            passed.append(f'{key}: posición correcta.')
-    # Placement errors must be resolved before interpreting the student's geometry.
-    placement_ok = not issues
+            passed.append(f'La posición de {name} coincide con el enunciado, dentro del margen de {POSITION_TOL:g} mm.')
+    if issues:
+        return dict(correct=False, issues=issues, passed=passed, markers=markers)
+
     student_rays = scene.get('rays', [])
     student_rays = student_rays if isinstance(student_rays, list) else []
+    def heading(vector):
+        return math.degrees(math.atan2(vector[1], vector[0]))
+
     for expected in exercise['rays']:
         matches = [r for r in student_rays if isinstance(r, dict) and r.get('id') == expected['id']]
         prefix = expected['label']
+        intro = f'**{prefix}.** '
         if not matches:
-            issues.append(f'{prefix}: falta el trazado. Termínalo con doble clic.')
-            continue
-        if not placement_ok:
+            issues.append(intro+'Todavía no has terminado este rayo. Selecciónalo en «Herramienta», marca su origen y un punto en cada superficie que atraviese o en la que se refleje. Añade un punto después de la última interacción y pulsa «Terminar rayo» o haz doble clic.')
             continue
         submitted = matches[-1].get('points', [])
         if not isinstance(submitted, list) or len(submitted) > 100:
-            issues.append(f'{prefix}: trazado no válido.')
+            issues.append(intro+'No se puede leer el trazado guardado. Selecciona este rayo, pulsa «Borrar rayo seleccionado» y dibújalo de nuevo marcando únicamente el origen, las interacciones y el extremo final.')
             continue
         pts = [_point(p) for p in submitted]
         target = np.asarray(expected['points'])
         if len(pts) < 2 or any(p is None for p in pts):
-            issues.append(f'{prefix}: marca el inicio, las interacciones y el final.')
+            issues.append(intro+'El trazado no contiene puntos suficientes o alguna coordenada no es válida. Bórralo y marca, por este orden, el origen en O, cada encuentro con una superficie y un punto final de salida.')
+            continue
+        if np.linalg.norm(pts[0]-target[0]) > POINT_TOL:
+            origin = 'el punto donde O toca el eje óptico' if abs(target[0,1]) < 1e-9 else 'el extremo superior del objeto O'
+            issues.append(intro+f'El primer punto está en ({pts[0][0]:.2f}, {pts[0][1]:.2f}) mm, pero este rayo debe salir de {origin}, en x = {target[0,0]:g} mm, y = {target[0,1]:g} mm. Vuelve a dibujarlo desde ese punto antes de ajustar su dirección.')
+            continue
+        if len(pts) != len(target):
+            route = ' → '.join(expected['surfaces'])
+            issues.append(intro+f'Has marcado {len(pts)-2} puntos intermedios y este recorrido necesita {len(target)-2}. Coloca un punto en cada superficie, en este orden: {route}. Una lente tiene dos caras; si el rayo vuelve tras un espejo, hay que marcar también las caras del regreso. El origen y el extremo final se cuentan aparte. No añadas puntos intermedios en tramos rectos.')
+            continue
+        initial_error = angle_error(pts[1]-pts[0], target[1]-target[0])
+        if initial_error > ANGLE_TOL:
+            goal = ('el centro de la superficie limitante indicada en el enunciado' if 'chief' in prefix
+                    else 'el borde útil superior del haz' if 'superior' in prefix
+                    else 'el borde útil inferior del haz' if 'inferior' in prefix
+                    else 'la referencia indicada por el tipo de rayo')
+            issues.append(intro+f'El tramo que sale de O apunta en una dirección que no corresponde a este rayo: debe dirigirse hacia {goal}, teniendo en cuenta las refracciones previas. Su ángulo inicial es {heading(pts[1]-pts[0]):.2f}° y el esperado es {heading(target[1]-target[0]):.2f}°, medidos desde +x en coordenadas físicas. Recoloca el primer encuentro con {expected["surfaces"][0]}, cerca de x = {target[1,0]:.2f} mm, y = {target[1,1]:.2f} mm. La diferencia admitida es {ANGLE_TOL:g}°. Revisa este tramo antes de los siguientes.')
             continue
         count_before = len(issues)
-        if np.linalg.norm(pts[0]-target[0]) > POINT_TOL:
-            issues.append(f'{prefix}: comienza en el punto del objeto O ({target[0,0]:g}, {target[0,1]:g}) mm; el marginal sale del eje y el chief del extremo.')
-        if len(pts) != len(target):
-            issues.append(f'{prefix}: se esperan {len(target)-2} puntos de interacción, uno por cara alcanzada (también en el retorno), además del inicio y del final. Has marcado {len(pts)-2}.')
-            continue
-        if angle_error(pts[1]-pts[0], target[1]-target[0]) > ANGLE_TOL:
-            issues.append(f'{prefix}: corrige la dirección inicial; no corresponde al tipo de rayo elegido.')
         for i, surface in enumerate(expected['surfaces'], 1):
             if np.linalg.norm(pts[i]-target[i]) > POINT_TOL:
-                issues.append(f'{prefix}, {surface}: el cambio de dirección debe estar cerca de x={target[i,0]:.2f}, y={target[i,1]:.2f} mm, en la superficie.')
-                markers.append(dict(point=pts[i].tolist(), label=surface))
-            incoming_error = angle_error(pts[i]-pts[i-1], target[i]-target[i-1])
+                issues.append(intro+f'En la interacción {i}, con {surface}, has marcado ({pts[i][0]:.2f}, {pts[i][1]:.2f}) mm. El rayo debe alcanzar esa superficie cerca de x = {target[i,0]:.2f} mm, y = {target[i,1]:.2f} mm. Sitúa el cambio de dirección sobre la curva, usando «Ajustar a la superficie». Se admite una distancia de {POINT_TOL:g} mm al punto esperado. Corrige este encuentro antes de continuar con el resto del recorrido.')
+                break
             outgoing = pts[i+1]-pts[i]
-            outgoing_error = angle_error(outgoing, np.asarray(expected['directions'][i-1]))
-            if outgoing_error > ANGLE_TOL:
-                law = 'la reflexión: el rayo debe regresar con ángulo igual al incidente respecto de la normal' if 'Espejo' in next((e['kind'] for e in exercise['elements'] if surface.startswith(e['name'])), '') else 'Snell: mide los ángulos respecto de la normal local'
-                issues.append(f'{prefix}, {surface}: revisa {law}. Error angular de salida: {outgoing_error:.1f}°.')
-            if incoming_error > ANGLE_TOL and outgoing_error <= ANGLE_TOL:
-                issues.append(f'{prefix}, {surface}: el segmento incidente no sigue la trayectoria esperada.')
-        if np.linalg.norm(pts[-1]-pts[-2]) < 10:
-            issues.append(f'{prefix}: prolonga al menos 10 mm el último segmento antes del doble clic.')
+            direction = np.asarray(expected['directions'][i-1])
+            error = angle_error(outgoing, direction)
+            if error > ANGLE_TOL:
+                mirror = any(e['kind'].startswith('Espejo') for e in exercise['elements'] if surface.startswith(e['name']+' ·') or surface == e['name'])
+                law = ('En la reflexión, el rayo vuelve al medio del que venía y el ángulo de salida debe ser igual al de entrada, ambos medidos respecto de la normal.' if mirror else
+                       'Aplica la ley de Snell, n₁·sen(i) = n₂·sen(r). La normal es la recta perpendicular a la superficie en ese punto; en una cara esférica apunta al centro de curvatura. Al pasar a un índice mayor el rayo se acerca a la normal, y al pasar a uno menor se aleja.')
+                issues.append(intro+f'El segmento que sale de {surface}, después de la interacción {i}, tiene una dirección incorrecta. '+law+f' Tu segmento forma {heading(outgoing):.2f}° respecto de +x y debería formar aproximadamente {heading(direction):.2f}°. La diferencia es {error:.2f}° y se admiten {ANGLE_TOL:g}°. Conserva el punto de esta interacción y corrige el siguiente punto para orientar el segmento. Estos ángulos usan las distancias físicas: no los midas directamente en pantalla, porque la escala vertical está ampliada.')
+                break
+        if len(issues) == count_before and np.linalg.norm(pts[-1]-pts[-2]) < 10:
+            issues.append(intro+'El rayo termina demasiado cerca de la última superficie. Continúa por la misma recta de salida durante al menos 10 mm y termina allí con doble clic o «Terminar rayo». Esa distancia permite comprobar su dirección; no debes pararlo en el borde del elemento.')
         if len(issues) == count_before:
-            passed.append(f'{prefix}: trazado correcto dentro de las tolerancias.')
+            passed.append(f'{prefix}: el origen, los encuentros con todas las superficies y las direcciones de salida son correctos dentro de las tolerancias. También has prolongado el tramo final lo suficiente.')
     if scene.get('draft'):
-        issues.append('Tienes un rayo sin terminar. Usa doble clic o cancélalo antes de entregar.')
+        issues.append('Queda un rayo en edición que todavía no has terminado. Si quieres entregarlo, añade su punto final y pulsa «Terminar rayo»; si era un intento que no quieres conservar, pulsa Escape. Después vuelve a entregar el ejercicio.')
     return dict(correct=not issues, issues=issues, passed=passed, markers=markers)

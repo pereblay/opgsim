@@ -67,3 +67,32 @@ class ExerciseTests(unittest.TestCase):
             auxiliary=generate_exercise(n,42,'construction')
             self.assertIn('Paralelo',auxiliary['rays'][0]['label'])
             self.assertTrue(assess_exercise(auxiliary,solved(auxiliary))['correct'])
+
+    def test_canvas_payload_has_no_preplaced_solution_references(self):
+        public = public_exercise(generate_exercise(2,42))
+        for key in ['stop','front_focus','principal']:
+            self.assertNotIn(key, public)
+        self.assertTrue(all(set(r)=={'id','label'} for r in public['rays']))
+
+    def test_placement_feedback_explains_action_before_ray_errors(self):
+        ex=generate_exercise(2,42)
+        scene=solved(ex)
+        scene['placements']['object'][0]+=20
+        scene['rays']=[]
+        report=assess_exercise(ex,scene)
+        self.assertEqual(len(report['issues']),1)
+        message=report['issues'][0]
+        self.assertIn('el objeto O',message)
+        self.assertIn('al moverlo se borrarán los rayos',message)
+        self.assertEqual(report['markers'],[])
+
+    def test_feedback_stops_at_first_bad_interaction_and_explains_reflection(self):
+        ex=generate_exercise(1,123)
+        scene=solved(ex)
+        points=scene['rays'][0]['points']
+        points[-1]=[points[-2][0]+100,points[-2][1]]
+        report=assess_exercise(ex,scene)
+        self.assertEqual(len(report['issues']),1)
+        message=report['issues'][0]
+        for text in ['reflexión','normal','Tu segmento forma','corrige el siguiente punto','escala vertical']:
+            self.assertIn(text,message)

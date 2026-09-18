@@ -55,10 +55,8 @@ export default function(component) {
       path(shape,e.kind.startsWith('Espejo')?'#475569':'#0284c7',false,2.5);text(e.name,[position[0],e.aperture/2+1]);
     }
     if(scene.placements.object){const x=scene.placements.object[0];path([[x,0],[x,ex.object_height]],'#18263c',false,4);dot([x,ex.object_height],'#18263c',4);text('O',[x,ex.object_height]);}
-    if(root.querySelector('[data-guides]').checked){for(const [x,label] of (ex.mode==='chief_marginal'&&ex.stop?[[ex.stop.x,'Centro del stop']]:[[ex.front_focus,'F'],[ex.principal,'H']])){if(x!==null&&Number.isFinite(x)){dot([x,0],'#9f1239');text(label,[x,0],'#9f1239');}}}
     for(const ray of scene.rays){const i=ex.rays.findIndex(r=>r.id===ray.id);path(ray.points,colors[Math.max(0,i)%3]);for(const p of ray.points)dot(p,colors[Math.max(0,i)%3],2.5);}
     if(scene.draft.length){const i=ex.rays.findIndex(r=>'ray:'+r.id===scene.tool);const color=colors[Math.max(0,i)%3];path(scene.draft,color);for(const p of scene.draft)dot(p,color);if(cursor)path([scene.draft.at(-1),cursor],color,true);}
-    for(const m of data.markers||[]){const p=m.point;ctx.strokeStyle='#dc2626';ctx.lineWidth=2;ctx.beginPath();ctx.arc(sx(p[0]),sy(p[1]),8,0,2*Math.PI);ctx.stroke();}
     if(cursor){dot(cursor,'#111827',3);if(scene.tool.startsWith('place:'))path([[cursor[0],b.ymin],[cursor[0],b.ymax]],'#94a3b8',true,1);}
     status.textContent=`${Object.keys(scene.placements).length}/${ex.elements.length+1} posiciones · ${scene.rays.length}/${ex.rays.length} rayos terminados`+(scene.draft.length?` · ${scene.draft.length} puntos en el rayo actual`:'');
   }
@@ -86,11 +84,10 @@ export default function(component) {
   tool.onchange=()=>{clearTimeout(timer);scene.tool=tool.value;scene.draft=[];save();draw();};
   root.querySelector('[data-undo]').onclick=()=>{clearTimeout(timer);if(scene.draft.length)scene.draft.pop();else if(scene.rays.length){const ray=scene.rays.pop();scene.tool='ray:'+ray.id;tool.value=scene.tool;scene.draft=ray.points.slice(0,-1);}save();draw();};
   root.querySelector('[data-delete]').onclick=()=>{scene.rays=scene.rays.filter(r=>'ray:'+r.id!==scene.tool);scene.draft=[];save();draw();};
-  root.querySelector('[data-reset]').onclick=()=>{scene={placements:{},rays:[],draft:[],tool:'place:object',zoom:1};zoom=1;tool.value=scene.tool;save();draw();};
+  root.querySelector('[data-reset]').onclick=()=>{clearTimeout(timer);cursor=null;scene={placements:{},rays:[],draft:[],tool:'place:object',zoom:1};zoom=1;tool.value=scene.tool;save();draw();};
   root.querySelector('[data-finish]').onclick=()=>{clearTimeout(timer);save();setTriggerValue('submitted',structuredClone(scene));};
   root.querySelector('[data-end-ray]').onclick=()=>{if(scene.draft.length>=2){scene.rays=scene.rays.filter(r=>r.id!==scene.tool.slice(4));scene.rays.push({id:scene.tool.slice(4),points:structuredClone(scene.draft)});scene.draft=[];save();draw();}};
-  for(const name of ['guides','snap'])root.querySelector(`[data-${name}]`).onchange=()=>{scene[name]=root.querySelector(`[data-${name}]`).checked;save();draw();};
-  root.querySelector('[data-guides]').checked=scene.guides??true;
+  for(const name of ['snap'])root.querySelector(`[data-${name}]`).onchange=()=>{scene[name]=root.querySelector(`[data-${name}]`).checked;save();draw();};
   root.querySelector('[data-snap]').checked=scene.snap??true;
   root.querySelector('[data-zoom-in]').onclick=()=>{zoom=Math.min(4,zoom*1.4);save();draw();};
   root.querySelector('[data-zoom-out]').onclick=()=>{zoom=Math.max(.5,zoom/1.4);save();draw();};

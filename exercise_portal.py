@@ -12,7 +12,6 @@ HTML = '''
  <button data-undo>Deshacer punto</button><button data-delete>Borrar rayo seleccionado</button>
  <button data-end-ray>Terminar rayo</button></div>
  <div class="toolbar"><label><input type="checkbox" data-snap checked> Ajustar a la superficie</label>
- <label><input type="checkbox" data-guides checked> Mostrar referencias del ejercicio</label>
  <button data-zoom-in aria-label="Ampliar canvas">Zoom +</button><button data-zoom-out aria-label="Alejar canvas">Zoom −</button>
  <button data-reset>Limpiar canvas</button></div>
  <p data-readout aria-live="polite">Mueve el ratón por la cuadrícula para consultar coordenadas y ángulos.</p>
@@ -79,6 +78,7 @@ def render_exercise_portal():
 **Teclado:** enfoca el canvas; las flechas desplazan el cursor, Intro coloca un punto, Mayús+Intro termina, Retroceso deshace y Escape cancela el rayo actual.''')
     st.caption(f'Tolerancias de revisión: posiciones e interacciones ±{ex["point_tolerance"]:g} mm; direcciones ±{ex["angle_tolerance"]:g}°. Las lentes conservan su diámetro útil: un rayo no puede atravesar una zona sin vidrio.')
     st.subheader('2 · Tu trazado')
+    st.caption('El canvas empieza sin objeto, elementos, rayos ni referencias de la solución. La cuadrícula y el eje sirven para colocar tu propio dibujo; las correcciones aparecen debajo.')
     key='exercise_canvas_'+ex['id']
     previous=st.session_state.get(key, {})
     scene=previous.get('value', st.session_state.exercise_scene)
@@ -87,8 +87,7 @@ def render_exercise_portal():
     if feedback and any(feedback.get('scene',{}).get(k) != scene.get(k) for k in ('placements','rays','draft')):
         feedback=None
         st.session_state.exercise_feedback=None
-    canvas = CANVAS(key=key, data=dict(exercise=public_exercise(ex), scene=scene,
-                    markers=feedback['report']['markers'] if feedback else []),
+    canvas = CANVAS(key=key, data=dict(exercise=public_exercise(ex), scene=scene),
                     on_value_change=lambda: None, on_submitted_change=lambda: None)
     if canvas.value is not None:
         st.session_state.exercise_scene=canvas.value
@@ -105,9 +104,9 @@ def render_exercise_portal():
         if report['correct']:
             st.success('Ejercicio correcto. Has colocado el banco y trazado todos los rayos dentro de las tolerancias.')
         else:
-            st.warning('Hay aspectos que corregir. Ajusta tu trazado y vuelve a entregar.')
-            for issue in report['issues']:
-                st.write('• '+issue)
+            st.warning('Revisa los pasos siguientes en orden. Primero corrige las posiciones; después, el primer error de cada rayo. Al entregar de nuevo se comprobará el recorrido actualizado.')
+            for number, issue in enumerate(report['issues'], 1):
+                st.markdown(f'**{number}.** {issue}')
         with st.expander('Lo que ya está bien', expanded=report['correct']):
             for item in report['passed']:
                 st.write('✓ '+item)
