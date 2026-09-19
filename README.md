@@ -56,31 +56,13 @@ Si `M=[[A,B],[C,D]]`, la focal efectiva en aire es `−1/C`, el foco posterior d
 
 La dispersión opcional es Cauchy, anclada a 550 nm: `n(λ)=n₅₅₀+B(λ⁻²−0.55⁻²)`, λ en µm. Con B=0, cambiar la longitud de onda no modifica la trayectoria. No se incluye catálogo de materiales. El trazado exacto puede mostrar aberraciones: O′ se calcula a partir de los rayos exactos mostrados, minimizando su dispersión transversal; la tabla indica su radio RMS. O′G, FG y F′G identifican explícitamente las referencias gaussianas. F′ en modo exacto usa el mismo criterio con un haz paralelo y el número de rayos seleccionado. No se fuerzan cruces inexistentes.
 
-## Comprobación
-
-Consulta la [verificación de fórmulas, convenios y límites](docs/verification.md), contrastada con los PDF aportados y fuentes técnicas en internet.
-
-```bash
-.venv/bin/python -m unittest discover -s tests -v
-```
-
-Incluye conjugados, lente gruesa, pupilas, reflexión física, Snell en ambas caras, doble paso, reflexión interna total, recorte, dispersión, casos singulares y la BFL ≈ 47,48 mm del ejemplo PCX de Edmund Optics. Las pruebas de Streamlit recorren todos los ejemplos en ambos modos y comprueban las etiquetas O/O′, F/F′ y la ausencia de flechas.
-
-Referencias: [matrices ABCD](https://www.rp-photonics.com/abcd_matrix.html), [pupilas](https://www.rp-photonics.com/entrance_and_exit_pupil.html), [Streamlit](https://docs.streamlit.io/develop/api-reference/data/st.data_editor).
 
 ## Notación y referencias de trazado
 
 O representa el objeto; O′, la imagen gaussiana. El objeto y los rayos físicos usan líneas continuas. La imagen, su plano y las prolongaciones virtuales usan líneas discontinuas. Fᵢ/Fᵢ′ son los focos de cada elemento aislado y F/F′ los del recorrido completo. Una posición focal no es una distancia focal: la EFL se mide desde los planos principales; la BFL, desde la última superficie óptica.
 
-El rayo principal (chief) parte de un punto de campo y atraviesa el centro del stop. Cada punto mostrado del objeto (extremos y eje) emite su principal y sus dos marginales. La altura del objeto es 0 mm por defecto; se puede aumentar para ver por separado la familia del extremo y la axial. La interfaz no incluye una categoría «Construcción». Todos los extremos de «Haz» y los marginales se calculan sobre el intervalo admitido por el modelo seleccionado, incluido el borde; continúan después de refractarse o reflejarse. Las pupilas mostradas siguen siendo gaussianas.
+El rayo principal (chief) parte de un punto de campo y atraviesa el centro del stop. Cada punto mostrado del objeto (extremos y eje) emite su principal y sus dos marginales. La altura del objeto es 0 mm por defecto; se puede aumentar para ver por separado la familia del extremo y la axial. Todos los extremos de «Haz» y los marginales se calculan sobre el intervalo admitido por el modelo seleccionado, incluido el borde; continúan después de refractarse o reflejarse. Las pupilas mostradas son gaussianas.
 
-- [Edmund Optics: trazado paraxial superficie a superficie](https://www.edmundoptics.com/knowledge-center/application-notes/optics/geometrical-optics-101-paraxial-ray-tracing-calculations/).
-- [Schnick / LibreTexts: construcción con lentes delgadas](https://phys.libretexts.org/Bookshelves/University_Physics/Calculus-Based_Physics_%28Schnick%29/Volume_B%3A_Electricity_Magnetism_and_Optics/B28%3A_Thin_Lenses_-_Ray_Tracing). Su convención de signos de radios difiere de la cartesiana usada aquí.
-- MIL-HDBK-141, capítulo 5 aportado por el usuario: §§5.2, 5.4.5, 5.9–5.11; diferencia entre intersecciones reales y planos tangentes paraxiales.
-- [OpenStax: espejos esféricos](https://openstax.org/books/university-physics-volume-3/pages/2-2-spherical-mirrors).
-
-Las lentes finas (por ejemplo, grosor 0,1 mm) y los radios pequeños se aceptan sin aumentarlos artificialmente. El diámetro útil se recorta al cruce de las caras o al diámetro de la esfera, y se informa del valor corregido. Dibujo, monturas y cálculo usan esa misma abertura. Las caras que se encuentran en una arista se procesan sucesivamente para conservar ambos cambios de medio. Los bordes de las monturas están en el borde real de la superficie, no en un plano ficticio de vértice.
-
-Referencia de trazado: [OptiCampus — Ray Tracing of Thin Lenses](https://opticampus.opti.vision/cecourse.php?url=ray_tracing/).
+Las lentes finas (por ejemplo, grosor 0,1 mm) y los radios pequeños se aceptan sin aumentarlos artificialmente. El diámetro útil se recorta al cruce de las caras o al diámetro de la esfera, y se informa del valor corregido. Dibujo, monturas y cálculo usan esa misma abertura. Las caras que se encuentran en una arista se procesan sucesivamente para conservar ambos cambios de medio.
 
 En el taller se pueden añadir rayos auxiliares, prolongaciones virtuales discontinuas hacia atrás del último tramo y marcas manuales O′, F′ y Oᵥ. El alumno decide la longitud y los puntos de cruce; la aplicación no revela soluciones. Para hallar un foco se trazan auxiliares incidentes paralelos, mientras que el haz desde O determina la imagen. Estas construcciones se conservan, se pueden borrar y no cuentan como interacciones de los rayos evaluados.
