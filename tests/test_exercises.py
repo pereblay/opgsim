@@ -52,13 +52,13 @@ class ExerciseTests(unittest.TestCase):
         for count in [0,4,-1]:
             with self.assertRaises(ValueError):generate_exercise(count,1)
 
-    def test_chief_and_marginals_have_distinct_origins(self):
+    def test_chief_and_marginals_share_object_tip(self):
         for n in [1,2,3]:
             ex=generate_exercise(n,42)
             chief,upper,lower=ex['rays']
             self.assertEqual(chief['points'][0][1],ex['object_height'])
             for marginal in [upper,lower]:
-                self.assertEqual(marginal['points'][0][1],0.)
+                self.assertEqual(marginal['points'][0],chief['points'][0])
                 self.assertGreater(len(marginal['points']),2)
             name=ex['stop']['name'].replace(' · retorno','')
             indices=[i+1 for i,s in enumerate(chief['surfaces']) if s==name]
@@ -96,3 +96,18 @@ class ExerciseTests(unittest.TestCase):
         message=report['issues'][0]
         for text in ['reflexión','normal','Tu segmento forma','corrige el siguiente punto','escala vertical']:
             self.assertIn(text,message)
+
+    def test_virtual_constructions_do_not_change_physical_assessment(self):
+        ex=generate_exercise(1,123)
+        scene=solved(ex)
+        scene.update(extensions={'ray0':[220.,3.]}, virtualPoints={'image':[220.,3.]},
+                     auxiliary=[{'id':'aux1','points':[[0,1],[20,1]]}])
+        self.assertTrue(assess_exercise(ex,scene)['correct'])
+
+    def test_marginal_started_on_axis_is_rejected_with_tip_instruction(self):
+        ex=generate_exercise(1,42)
+        scene=solved(ex)
+        scene['rays'][1]['points'][0][1]=0
+        report=assess_exercise(ex,scene)
+        self.assertFalse(report['correct'])
+        self.assertTrue(any('extremo superior' in issue for issue in report['issues']))

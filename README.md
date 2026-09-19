@@ -38,7 +38,7 @@ El índice de nuevos elementos es 1 por petición: en aire no produce refracció
 
 El botón **Abrir portal de ejercicios**, debajo del título, abre el taller. El alumno elige de uno a tres elementos y pulsa **Generar ejercicio**. Se toman lentes y espejos del catálogo de ejemplos y se varían sus diámetros, grosores y radios. Los bancos generados se comprueban para que los rayos solicitados atraviesen el montaje. No hay diafragmas; se usa como máximo un espejo, al final, para que todos los elementos participen en el recorrido.
 
-El taller pide el **chief y los marginales**: el chief se apunta numéricamente al centro de la cara limitante; los marginales parten del eje y continúan tras alcanzar los bordes.
+El taller pide el **chief y los marginales**: el chief se apunta numéricamente al centro de la cara limitante; los marginales parten del mismo extremo O que el chief y continúan tras alcanzar los bordes útiles del haz de ese punto.
 
 El enunciado proporciona posiciones, altura de objeto, índices y radios firmados. En el canvas se colocan O y los elementos con clics sobre el eje. Luego se selecciona un tipo de rayo y se marcan inicio e interacciones; el doble clic fija el final. Un segmento provisional sigue al ratón con coordenadas y ángulo. Hay ajuste a las superficies, zoom, deshacer, borrar rayo y controles de teclado. El canvas comienza solo con la cuadrícula y el eje: no muestra referencias F/H, el centro del stop ni marcas de corrección. El alumno coloca todos los objetos ópticos. La escala vertical se amplía para facilitar el dibujo, pero las medidas se calculan en coordenadas físicas.
 
@@ -82,3 +82,5 @@ El rayo principal (chief) parte de un punto de campo y atraviesa el centro del s
 Las lentes finas (por ejemplo, grosor 0,1 mm) y los radios pequeños se aceptan sin aumentarlos artificialmente. El diámetro útil se recorta al cruce de las caras o al diámetro de la esfera, y se informa del valor corregido. Dibujo, monturas y cálculo usan esa misma abertura. Las caras que se encuentran en una arista se procesan sucesivamente para conservar ambos cambios de medio. Los bordes de las monturas están en el borde real de la superficie, no en un plano ficticio de vértice.
 
 Referencia de trazado: [OptiCampus — Ray Tracing of Thin Lenses](https://opticampus.opti.vision/cecourse.php?url=ray_tracing/).
+
+En el taller se pueden añadir rayos auxiliares, prolongaciones virtuales discontinuas hacia atrás del último tramo y marcas manuales O′, F′ y Oᵥ. El alumno decide la longitud y los puntos de cruce; la aplicación no revela soluciones. Para hallar un foco se trazan auxiliares incidentes paralelos, mientras que el haz desde O determina la imagen. Estas construcciones se conservan, se pueden borrar y no cuentan como interacciones de los rayos evaluados.

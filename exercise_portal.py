@@ -10,7 +10,7 @@ from optics import Element
 HTML = '''
 <div class="exercise-root">
  <div class="toolbar"><label>Herramienta <select data-tool aria-label="Herramienta del canvas"></select></label>
- <button data-undo>Deshacer punto</button><button data-delete>Borrar rayo seleccionado</button>
+ <button data-undo>Deshacer punto</button><button data-delete>Borrar selección</button>
  <button data-end-ray>Terminar rayo</button></div>
  <div class="toolbar"><label><input type="checkbox" data-snap checked> Ajustar a la superficie</label>
  <button data-zoom-in aria-label="Ampliar canvas">Zoom +</button><button data-zoom-out aria-label="Alejar canvas">Zoom −</button>
@@ -53,8 +53,8 @@ def render_exercise_portal():
         st.info('Elige uno, dos o tres elementos y pulsa «Generar ejercicio» para comenzar.')
         return
     ex = st.session_state.exercise
-    if ex.get('mode') != 'chief_marginal':
-        st.info('Pulsa «Generar ejercicio» para comenzar con el chief y los marginales.')
+    if ex.get('mode') != 'chief_marginal' or ex.get('revision') != 'tip-v2':
+        st.info('Pulsa «Generar ejercicio» para usar el enunciado actualizado: el principal y ambos marginales salen del extremo O. Tu ejercicio anterior no se sustituye hasta que lo generes.')
         return
     if count != len(ex['elements']):
         st.caption('Pulsa «Generar ejercicio» para aplicar el nuevo número de elementos.')
@@ -68,14 +68,18 @@ def render_exercise_portal():
         properties.append({'Elemento':e.name,'Tipo':e.kind,'Posición (mm)':e.position,'Altura / diámetro (mm)':e.aperture,'Grosor (mm)':e.thickness,'n':f'{e.index:g}' if e.lens else '—','R₁ (mm)':radius(r1),'R₂ (mm)':radius(r2)})
     st.dataframe(properties, hide_index=True, width='stretch')
     st.caption('Radios cartesianos: centro de curvatura a la derecha, R positivo; cara plana, R=∞. Aire exterior n=1; luz de 550 nm. No hay diafragmas. Un espejo, si aparece, es el último elemento y refleja toda la luz.')
+    st.write('Los tres rayos salen del extremo O, a la altura del objeto; ninguno de los marginales se inicia en su base sobre el eje.')
     st.write('Traza estos rayos: '+ '; '.join(r['label'] for r in ex['rays'])+'.')
     with st.expander('Cómo resolver el ejercicio'):
         st.markdown('''1. Selecciona «Colocar objeto O» y haz clic en su posición sobre el eje. La altura está fijada por el enunciado.
 2. Coloca E1, E2 y E3, según corresponda. Puedes recolocarlos seleccionándolos otra vez; al moverlos se borran los rayos anteriores.
-3. Elige un tipo de rayo. El chief parte del extremo del objeto; los marginales parten del objeto sobre el eje. Marca después cada punto de refracción o reflexión. Una lente gruesa exige dos puntos, uno por cara; en el retorno, repite las caras alcanzadas.
+3. Elige un tipo de rayo. El principal y los dos marginales parten del mismo extremo O del objeto, a la altura indicada en el enunciado. Los marginales delimitan por arriba y por abajo el haz admitido desde ese punto. Marca después cada punto de refracción o reflexión. Una lente gruesa exige dos puntos, uno por cara; en el retorno, repite las caras alcanzadas.
 4. El segmento discontinuo sigue al ratón. Consulta altura y ángulo físico; la escala vertical del dibujo está ampliada. «Ajustar a la superficie» ayuda a colocar el punto sobre la curva sin calcular la dirección por ti.
 5. Haz doble clic para fijar el extremo final, al menos 10 mm después de la última interacción. También puedes fijar el punto y pulsar «Terminar rayo».
-6. Pulsa «He terminado» y corrige los errores indicados. Puedes entregar de nuevo tantas veces como necesites.
+6. Para prolongar un rayo hacia el espacio virtual, termínalo primero y selecciona «Prolongación virtual» para ese rayo. Mueve el cursor hacia atrás desde la última interacción y haz clic para fijar la longitud: la prolongación se dibuja discontinua sobre la recta de salida que tú has trazado.
+7. Prolonga varios rayos y marca su cruce con «Marcar imagen virtual O′». Para hallar F′ usa rayos auxiliares que lleguen paralelos al eje; los rayos de un objeto finito determinan su imagen, no el foco. Dibuja esos rayos con «Dibujar rayo auxiliar» y prolonga después sus salidas. «Marcar foco virtual F′» coloca tu punto sobre el eje. Puedes marcar también un objeto virtual con Oᵥ. Usa «Zoom −» si el cruce queda fuera de la vista.
+8. Las prolongaciones, los rayos auxiliares y las marcas son construcciones libres: se guardan con tu dibujo, pero no cuentan como interacciones y no se califican. Solo se revisan los rayos pedidos en el enunciado.
+9. Pulsa «He terminado» y corrige los errores indicados. Puedes entregar de nuevo tantas veces como necesites.
 
 **Teclado:** enfoca el canvas; las flechas desplazan el cursor, Intro coloca un punto, Mayús+Intro termina, Retroceso deshace y Escape cancela el rayo actual.''')
     st.caption(f'Tolerancias de revisión: posiciones e interacciones ±{ex["point_tolerance"]:g} mm; direcciones ±{ex["angle_tolerance"]:g}°. Las lentes conservan su diámetro útil: un rayo no puede atravesar una zona sin vidrio.')
@@ -86,7 +90,7 @@ def render_exercise_portal():
     scene=previous.get('value', st.session_state.exercise_scene)
     feedback=st.session_state.get('exercise_feedback')
     # A changed construction invalidates the previous assessment immediately.
-    if feedback and any(feedback.get('scene',{}).get(k) != scene.get(k) for k in ('placements','rays','draft')):
+    if feedback and any(feedback.get('scene',{}).get(k) != scene.get(k) for k in ('placements','rays','draft','extensions','virtualPoints','auxiliary')):
         feedback=None
         st.session_state.exercise_feedback=None
     canvas = CANVAS(key=key, data=dict(exercise=public_exercise(ex), scene=scene),

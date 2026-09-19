@@ -5,7 +5,7 @@ import random
 import numpy as np
 from optics import Element, sag, admitted_interval
 from presets import PRESETS
-from raytrace import geometry, physical_paraxial, construction_rays, trace_exact, exact_axial_aperture_scale
+from raytrace import geometry, physical_paraxial, construction_rays, trace_exact, exact_axial_aperture_scale, exact_admitted_interval
 
 POSITION_TOL = 2.0  # mm, generous enough for clicks; shown to students
 POINT_TOL = 2.0
@@ -49,9 +49,12 @@ def reference_rays(elements, object_x, height, xmin, xmax, mode='construction'):
             chief_slope-=y/derivative
         if abs(chief_height(chief_slope))>1e-6:
             raise ValueError('Chief aiming did not converge.')
+        interval = exact_admitted_interval(geometry(elements, 100, 550), object_x, height, xmin, xmax)
+        if interval is None:
+            raise ValueError('No transmitted bundle from the object tip.')
         candidates=[('Principal (chief) · centro del stop',height,chief_slope),
-                    ('Marginal superior · borde útil',0.,slope),
-                    ('Marginal inferior · borde útil',0.,-slope)]
+                    ('Marginal superior · borde útil',height,interval[1]),
+                    ('Marginal inferior · borde útil',height,interval[0])]
     rays = []
     for i, (label, ray_height, slope) in enumerate(candidates):
         ray = trace_exact(boundaries, object_x, ray_height, math.atan(slope), xmin, xmax)
@@ -101,7 +104,7 @@ def generate_exercise(count, seed, mode='chief_marginal'):
             rays, result = reference_rays(elements, obj, height, xmin, xmax, mode)
         except ValueError:
             continue
-        return dict(id=f'{seed}-{count}-{mode}', seed=seed, mode=mode, stop=result.get('exercise_stop'), elements=[asdict(e) for e in elements],
+        return dict(id=f'{seed}-{count}-{mode}-tip-v2', revision='tip-v2', seed=seed, mode=mode, stop=result.get('exercise_stop'), elements=[asdict(e) for e in elements],
                     object_x=obj, object_height=height, rays=rays, xmin=xmin, xmax=xmax,
                     front_focus=result['front_focus'], principal=result['h1'],
                     position_tolerance=POSITION_TOL, point_tolerance=POINT_TOL, angle_tolerance=ANGLE_TOL)

@@ -1,4 +1,8 @@
 import json
+import hashlib
+import importlib
+import sys
+from pathlib import Path
 import math
 from dataclasses import asdict
 import numpy as np
@@ -9,8 +13,17 @@ from optics import Element, TYPES, sag, admitted_interval, EPS, build, matrix_wa
 from raytrace import geometry, physical_paraxial, trace_exact, focal_points, trace_gaussian, axial_source_bundle, exact_axial_aperture_scale, exact_admitted_interval, exact_chief_slope, ray_image, exact_back_focus
 
 st.set_page_config(page_title='Banco óptico · OPGSim', page_icon='🔬', layout='wide')
-# Import on every initial run so Streamlit watches the portal even before navigation.
+# Cloud can rerun the entrypoint while keeping imported modules in memory.
+# Refresh the portal and its assessment code when any of their sources change.
+portal_revision = hashlib.sha256(b''.join(Path(__file__).with_name(name).read_bytes()
+    for name in ('exercise_portal.py', 'exercise_canvas.js', 'exercises.py'))).hexdigest()
+portal_module = sys.modules.get('exercise_portal')
+if portal_module is not None and getattr(portal_module, '_loaded_revision', None) != portal_revision:
+    if 'exercises' in sys.modules:
+        importlib.reload(sys.modules['exercises'])
+    importlib.reload(portal_module)
 from exercise_portal import render_exercise_portal
+sys.modules['exercise_portal']._loaded_revision = portal_revision
 if st.session_state.get('portal') == 'exercises':
     render_exercise_portal()
     st.stop()
