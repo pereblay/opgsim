@@ -1,5 +1,6 @@
 """Student portal and inline Streamlit v2 canvas."""
 from pathlib import Path
+import hashlib
 import math
 import secrets
 import streamlit as st
@@ -28,8 +29,11 @@ canvas {display:block;border:1px solid #cbd5e1;border-radius:.5rem;touch-action:
 [data-readout] {font-variant-numeric:tabular-nums;min-height:1.6em;margin:.5rem 0;}
 [data-finish] {font-weight:600;border:2px solid var(--st-primary-color);margin-left:auto;}
 '''
-CANVAS = st.components.v2.component('optical_exercise_canvas', html=HTML, css=CSS,
-    js=Path(__file__).with_name('exercise_canvas.js').read_text())
+CANVAS_JS = Path(__file__).with_name('exercise_canvas.js').read_text()
+# A new frontend bundle must not reuse a previously loaded component renderer.
+CANVAS_VERSION = hashlib.sha256((HTML + CSS + CANVAS_JS).encode()).hexdigest()[:12]
+CANVAS = st.components.v2.component('optical_exercise_canvas_' + CANVAS_VERSION,
+    html=HTML, css=CSS, js=CANVAS_JS)
 
 
 def render_exercise_portal():
@@ -54,7 +58,7 @@ def render_exercise_portal():
         return
     if count != len(ex['elements']):
         st.caption('Pulsa «Generar ejercicio» para aplicar el nuevo número de elementos.')
-    st.subheader('1 · Enunciado')
+    st.header('Enunciado:')
     st.write(f'Sitúa el objeto O en **x = {ex["object_x"]:g} mm**, con altura **{ex["object_height"]:g} mm**. La luz sale inicialmente hacia la derecha. Coloca los siguientes elementos centrados en el eje:')
     properties=[]
     for data in ex['elements']:
@@ -65,8 +69,6 @@ def render_exercise_portal():
     st.dataframe(properties, hide_index=True, width='stretch')
     st.caption('Radios cartesianos: centro de curvatura a la derecha, R positivo; cara plana, R=∞. Aire exterior n=1; luz de 550 nm. No hay diafragmas. Un espejo, si aparece, es el último elemento y refleja toda la luz.')
     st.write('Traza estos rayos: '+ '; '.join(r['label'] for r in ex['rays'])+'.')
-    stop=ex['stop']
-    st.info(f'El chief sale del extremo de O y pasa por el centro de {stop["name"]} (x={stop["x"]:g} mm, y=0). Los marginales salen de O sobre el eje y alcanzan los bordes útiles. Continúan tras refractarse o reflejarse: no se terminan en el borde.')
     with st.expander('Cómo resolver el ejercicio'):
         st.markdown('''1. Selecciona «Colocar objeto O» y haz clic en su posición sobre el eje. La altura está fijada por el enunciado.
 2. Coloca E1, E2 y E3, según corresponda. Puedes recolocarlos seleccionándolos otra vez; al moverlos se borran los rayos anteriores.
