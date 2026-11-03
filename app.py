@@ -54,7 +54,7 @@ with st.sidebar:
     finite_source = source_mode == 'Objeto finito'
     obj = st.number_input('Distancia del objeto a la referencia (mm)', max_value=-0.01, value=-120., step=10., disabled=not finite_source)
     height = st.number_input('Altura total del objeto (mm)', min_value=0., value=0., step=1., disabled=not finite_source)
-    placement = st.radio('Situación del objeto', ['Por encima del eje', 'Centrado simétricamente'], disabled=not finite_source)
+    placement = st.radio('Situación del objeto', ['Por encima del eje', 'Por debajo del eje', 'Centrado simétricamente'], disabled=not finite_source)
     diameter = st.number_input('Diámetro de abertura inicial (mm)', min_value=0.01, value=25., step=1.)
     wavelength = st.slider('Longitud de onda (nm)', 380, 780, 550)
     st.caption('La abertura inicial es física. Solo coincide con la pupila de entrada si es la abertura limitante del sistema.')
@@ -146,7 +146,9 @@ except (ValueError, TypeError, KeyError, ZeroDivisionError) as error:
     st.error(f'Revisa la configuración: {error}')
     st.stop()
 
-bottom, top = (0., height) if placement == 'Por encima del eje' else (-height/2, height/2)
+bottom, top = {'Por encima del eje': (0., height),
+               'Por debajo del eje': (-height, 0.),
+               'Centrado simétricamente': (-height/2, height/2)}[placement]
 end = max([0.]+[e.position+e.thickness if e.lens or e.kind == 'Diafragma' else e.position for e in elements]) + extension
 start_x = obj - extension*.25
 source_rays = None
@@ -172,7 +174,7 @@ def base_figure():
     if finite_source:
         fig.add_trace(go.Scatter(x=[obj+origin]*2, y=[bottom, top], mode='lines+markers', line=dict(color='#0f172a', width=5), name='O · Objeto real'))
         fig.add_vline(x=obj+origin, line_color='#64748b', line_width=1)
-        fig.add_annotation(x=obj+origin, y=top, text='O', showarrow=False, yshift=16, font=dict(size=16, color='#0f172a'))
+        fig.add_annotation(x=obj+origin, y=bottom if placement == 'Por debajo del eje' else top, text='O', showarrow=False, yshift=-16 if placement == 'Por debajo del eje' else 16, font=dict(size=16, color='#0f172a'))
     elif source_mode == 'Paralelos desde infinito':
         fig.add_annotation(x=obj+origin, y=diameter/2, text='O en ∞ · haz paralelo', showarrow=False, yshift=16)
     elif result['front_focus'] < 0:
