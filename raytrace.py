@@ -98,7 +98,8 @@ class Rim:
 def geometry(elements, diameter, wavelength):
     build(elements, diameter, wavelength)  # Validate common optical parameters.
     boundaries = [Boundary(0, math.inf, diameter, 'Abertura inicial', 'stop')]
-    last_extent = 0.
+    # The first vertex may define x=0; its spherical cap can extend to x<0.
+    last_extent = -math.inf
     for original in sorted(elements, key=lambda e: e.position):
         e = replace(original, aperture=original.clear_aperture)
         if e.lens:
@@ -250,11 +251,11 @@ def exact_axial_aperture_scale(boundaries, object_x, height, slope, xmin, xmax):
     if abs(height)+abs(slope) < 1e-14:
         return 1.
     center = trace_exact(boundaries, object_x, 0., 0., xmin, xmax)
-    itinerary = [(e['surface'], e['event']) for e in center['events']]
+    itinerary = [(e['surface'], e['event']) for e in center['events'] if e['event'] != 'Abertura']
 
     def admitted(scale):
         ray = trace_exact(boundaries, object_x, height*scale, math.atan(slope*scale), xmin, xmax)
-        return ray['blocked'] is None and [(e['surface'], e['event']) for e in ray['events']] == itinerary
+        return ray['blocked'] is None and [(e['surface'], e['event']) for e in ray['events'] if e['event'] != 'Abertura'] == itinerary
 
     low, high = 0., 1.
     # Find the first rejected sample while moving outwards from the axis.
@@ -366,7 +367,7 @@ def exact_admitted_interval(boundaries, object_x, height, xmin, xmax):
     masquerade as transmitted marginal rays.
     """
     axial = trace_exact(boundaries, object_x, 0., 0., xmin, xmax)
-    itinerary = [(e['surface'], e['event']) for e in axial['events']]
+    itinerary = [(e['surface'], e['event']) for e in axial['events'] if e['event'] != 'Abertura']
     entrance = boundaries[0]
     distance = entrance.x-object_x
     if distance <= 0 or axial['blocked']:
@@ -374,7 +375,7 @@ def exact_admitted_interval(boundaries, object_x, height, xmin, xmax):
     lo, hi = (-entrance.aperture/2-height)/distance, (entrance.aperture/2-height)/distance
     def admitted(u):
         ray = trace_exact(boundaries, object_x, height, math.atan(u), xmin, xmax)
-        return ray['blocked'] is None and [(e['surface'], e['event']) for e in ray['events']] == itinerary
+        return ray['blocked'] is None and [(e['surface'], e['event']) for e in ray['events'] if e['event'] != 'Abertura'] == itinerary
     # Include the ray directed toward the optical axis even for narrow lenses.
     candidates = sorted(set(np.linspace(lo, hi, 129).tolist()+[-height/(b.x-object_x) for b in boundaries if isinstance(b, Boundary) and b.x > object_x]))
     seeds = [u for u in candidates if lo <= u <= hi and admitted(u)]

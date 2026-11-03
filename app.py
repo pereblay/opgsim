@@ -9,10 +9,12 @@ import numpy as np
 import plotly.graph_objects as go
 import streamlit as st
 from presets import PRESETS
+from branding import render_brand_header
 from optics import Element, TYPES, sag, admitted_interval, EPS, build, matrix_walkthrough
-from raytrace import geometry, physical_paraxial, trace_exact, focal_points, trace_gaussian, axial_source_bundle, exact_axial_aperture_scale, exact_admitted_interval, exact_chief_slope, ray_image, exact_back_focus
+from raytrace import geometry, physical_paraxial, trace_exact, focal_points, trace_gaussian, axial_source_bundle, exact_axial_aperture_scale, exact_admitted_interval, exact_chief_slope, ray_image, exact_back_focus, construction_rays
 
-st.set_page_config(page_title='Banco óptico · OPGSim', page_icon='🔬', layout='wide')
+st.set_page_config(page_title='VIU · Banco óptico · OPGSim', page_icon='🔬', layout='wide')
+render_brand_header()
 # Cloud can rerun the entrypoint while keeping imported modules in memory.
 # Refresh the portal and its assessment code when any of their sources change.
 portal_revision = hashlib.sha256(b''.join(Path(__file__).with_name(name).read_bytes()
@@ -28,7 +30,7 @@ if st.session_state.get('portal') == 'exercises':
     render_exercise_portal()
     st.stop()
 st.title('Banco óptico')
-if st.button('Abrir portal de ejercicios', key='open_exercises'):
+if st.button('Abrir portal de ejercicios', key='open_exercises', type='primary'):
     st.session_state.portal = 'exercises'
     st.rerun()
 st.caption('OPGSim · Trazado paraxial o exacto · Parámetros gaussianos · Distancias en mm · Sistema centrado en aire')
@@ -37,9 +39,17 @@ if 'elements' not in st.session_state:
     st.session_state.elements = [asdict(e) for e in PRESETS['Lente convergente']]
     st.session_state.version = 0
 
+def anchored_rows(rows):
+    rows = sorted((dict(row) for row in rows), key=lambda row: row['position'])
+    shift = rows[0]['position'] if rows else 0.
+    return [dict(row, position=row['position']-shift) for row in rows]
+
+st.session_state.elements = anchored_rows(st.session_state.elements)
+
 with st.sidebar:
     st.header('Objeto y abertura inicial')
-    origin = st.number_input('Posición absoluta de referencia (mm)', value=0., step=10., help='Traslada las coordenadas del dibujo; las posiciones de los elementos son relativas a esta referencia.')
+    origin = 0.
+    st.caption('El primer elemento fija el origen x=0 mm. Las distancias se miden desde su primera cara.')
     source_mode = st.radio('Origen de los rayos', ['Objeto finito', 'Paralelos desde infinito', 'Desde el foco F'])
     finite_source = source_mode == 'Objeto finito'
     obj = st.number_input('Distancia del objeto a la referencia (mm)', max_value=-0.01, value=-120., step=10., disabled=not finite_source)
@@ -51,11 +61,11 @@ with st.sidebar:
     st.header('Trazado')
     tracing_mode = st.selectbox('Modelo de rayos', ['Paraxial · aproximación matricial', 'Exacto · Snell y reflexión'], index=1)
     exact = tracing_mode.startswith('Exacto')
-    ray_families = st.multiselect('Rayos que se dibujan', ['Principal y marginales', 'Haz'], default=['Principal y marginales'], disabled=not finite_source)
+    ray_families = st.multiselect('Rayos que se dibujan', ['Principal y marginales', 'Paralelo al eje', 'Rayo focal', 'Haz'], default=['Principal y marginales'], disabled=not finite_source)
     st.header('Visualización')
     ray_count = st.slider('Rayos del haz por punto', 3, 15, 5, step=2)
     extension = st.number_input('Extensión visible del recorrido (mm)', min_value=1., value=160., step=20.)
-    show_virtual = st.checkbox('Prolongaciones hacia imagen virtual', True)
+    show_virtual = True
     equal_scale = st.checkbox('Misma escala horizontal y vertical', True)
     st.header('Ejemplos')
     preset = st.selectbox('Configuración', list(PRESETS))
@@ -65,7 +75,7 @@ with st.sidebar:
         st.rerun()
 
 st.subheader('1 · Elementos del sistema')
-st.caption('Añade los elementos uno a uno y edita sus valores en la tabla. Se ordenan por posición. Altura = diámetro útil, centrado en el eje.')
+st.caption('El primer elemento se fija en x=0; al cambiar el origen se conservan las separaciones. Altura = diámetro útil, centrado en el eje.')
 with st.form('add', clear_on_submit=False):
     c1, c2, c3 = st.columns([2, 2, 1], vertical_alignment='bottom')
     kind = c1.selectbox('Tipo de elemento', TYPES)
@@ -88,6 +98,11 @@ columns = {
 }
 edited = st.data_editor(st.session_state.elements, column_config=columns, num_rows='fixed', hide_index=True, width="stretch", key=f'editor_{st.session_state.version}')
 # The current table is the source for subsequent additions and removals.
+normalized = anchored_rows(edited)
+if normalized != edited:
+    st.session_state.elements = normalized
+    st.session_state.version += 1
+    st.rerun()
 st.session_state.elements = edited
 if edited:
     c1, c2 = st.columns([4, 1], vertical_alignment='bottom')
@@ -199,7 +214,9 @@ def base_figure():
                 fig.add_trace(go.Scatter(x=[value+origin], y=[0], mode='markers', marker=dict(symbol='x', size=11 if focus['name'] == 'Sistema completo' else 8, color=color), showlegend=False, hovertemplate=f'{label} · {focus["name"]}<br>x={value:.3f} mm (relativa)<extra></extra>'))
                 # Opposite sides of the axis separate F and F′ when coincident.
                 fig.add_annotation(x=value+origin, y=0, text=label, showarrow=False, yshift=(20+12*(i%2))*(1 if field=='front' else -1), font=dict(size=13, color=color))
-    fig.update_layout(template='plotly_white', height=350, margin=dict(l=25, r=20, t=30, b=30), xaxis_title='Posición física x (mm)', yaxis_title='Altura (mm)', legend=dict(orientation='h', y=-.25, groupclick='togglegroup'), hovermode='closest')
+    fig.update_layout(template='plotly_white', height=350, margin=dict(l=25, r=20, t=30, b=30), xaxis_title='Posición física x (mm)', yaxis_title='Altura (mm)', legend=dict(orientation='h', y=-.25, groupclick='togglegroup'), hovermode='closest', font=dict(family='Arial, sans-serif', color='#242222'), paper_bgcolor='#FFFFFF', plot_bgcolor='#FCFAF8')
+    fig.update_xaxes(gridcolor='#E9E2DC', zerolinecolor='#A99A8D')
+    fig.update_yaxes(gridcolor='#E9E2DC', zerolinecolor='#A99A8D')
     fig.update_xaxes(range=[obj+origin-10, end+origin])
     if equal_scale:
         fig.update_yaxes(scaleanchor='x', scaleratio=1)
@@ -218,6 +235,13 @@ for group, h in enumerate(sorted(set([bottom, 0., top])) if finite_source else [
         a, b = p[0]
         stop_radius = surfaces[result['stop']].aperture/2
         rays = []
+        if 'Paralelo al eje' in ray_families:
+            rays.append(('Paralelo al eje', 0.))
+        if 'Rayo focal' in ray_families:
+            focal = [(label, slope) for label, slope in construction_rays(result, obj, h) if label.startswith('Por F')]
+            rays += [('Rayo focal · dirigido hacia F', slope) for _, slope in focal]
+            if not focal:
+                st.caption('No hay un rayo focal independiente: F está en infinito o coincide con el plano del objeto.')
         interval = (exact_admitted_interval(boundaries, obj, h, start_x, end) if exact
                     else admitted_interval(surfaces, obj, h))
         if 'Principal y marginales' in ray_families and interval:

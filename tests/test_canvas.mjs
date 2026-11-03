@@ -1,0 +1,13 @@
+import fs from 'node:fs';
+import assert from 'node:assert/strict';
+const source=fs.readFileSync(new URL('../exercise_canvas.js',import.meta.url),'utf8');
+const {automaticExtensions:f}=await import('data:text/javascript;base64,'+Buffer.from(source).toString('base64'));
+const ray=(id,a,b)=>({id,points:[[-100,0],a,b]});
+let e=f([ray('a',[0,2],[10,4]),ray('b',[0,-2],[10,-4])]);
+assert(Math.abs(e.a[0]+10)<1e-9);assert(Math.abs(e.b[1])<1e-9);
+assert.deepEqual(f([ray('a',[0,2],[10,0]),ray('b',[0,-2],[10,0])]),{});
+e=f([ray('a',[0,2],[-10,4]),ray('b',[0,-2],[-10,-4])]);
+assert(Math.abs(e.a[0]-10)<1e-9);
+assert.deepEqual(f([ray('a',[0,2],[10,2]),ray('b',[0,-2],[10,-2])]),{});
+assert.deepEqual(f([ray('a',[0,2],[10,4])]),{});
+console.log('Automatic extensions: diverging, converging, reflected, afocal and single-ray cases passed.');

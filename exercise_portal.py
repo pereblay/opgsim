@@ -6,6 +6,7 @@ import secrets
 import streamlit as st
 from exercises import generate_exercise, public_exercise, assess_exercise
 from optics import Element
+from raytrace import physical_paraxial
 
 HTML = '''
 <div class="exercise-root">
@@ -53,8 +54,8 @@ def render_exercise_portal():
         st.info('Elige uno, dos o tres elementos y pulsa «Generar ejercicio» para comenzar.')
         return
     ex = st.session_state.exercise
-    if ex.get('mode') != 'chief_marginal' or ex.get('revision') != 'tip-v2':
-        st.info('Pulsa «Generar ejercicio» para usar el enunciado actualizado: el principal y ambos marginales salen del extremo O. Tu ejercicio anterior no se sustituye hasta que lo generes.')
+    if ex.get('mode') != 'parallel_focal' or ex.get('revision') != 'origin-v3':
+        st.info('Pulsa «Generar ejercicio» para practicar chief, paralelo y focal con el primer elemento en x=0. Tu dibujo anterior se conserva hasta entonces.')
         return
     if count != len(ex['elements']):
         st.caption('Pulsa «Generar ejercicio» para aplicar el nuevo número de elementos.')
@@ -65,18 +66,19 @@ def render_exercise_portal():
         e=Element(**data)
         r1,r2=e.radii() if e.lens else (math.inf if e.kind=='Espejo plano' else (-abs(e.r1) if e.kind=='Espejo cóncavo' else abs(e.r1)), None)
         radius=lambda r: '—' if r is None else ('∞' if math.isinf(r) else f'{r:+g}')
-        properties.append({'Elemento':e.name,'Tipo':e.kind,'Posición (mm)':e.position,'Altura / diámetro (mm)':e.aperture,'Grosor (mm)':e.thickness,'n':f'{e.index:g}' if e.lens else '—','R₁ (mm)':radius(r1),'R₂ (mm)':radius(r2)})
+        focal=physical_paraxial([e],100,550,ex['object_x'])['focal']
+        properties.append({'Focal efectiva (mm)': '∞' if focal is None else f'{focal:.3f}', 'Elemento':e.name,'Tipo':e.kind,'Posición (mm)':e.position,'Altura / diámetro (mm)':e.aperture,'Grosor (mm)':e.thickness,'n':f'{e.index:g}' if e.lens else '—','R₁ (mm)':radius(r1),'R₂ (mm)':radius(r2)})
     st.dataframe(properties, hide_index=True, width='stretch')
     st.caption('Radios cartesianos: centro de curvatura a la derecha, R positivo; cara plana, R=∞. Aire exterior n=1; luz de 550 nm. No hay diafragmas. Un espejo, si aparece, es el último elemento y refleja toda la luz.')
-    st.write('Los tres rayos salen del extremo O, a la altura del objeto; ninguno de los marginales se inicia en su base sobre el eje.')
+    st.write('Los tres rayos salen del mismo extremo O: chief al centro del stop, paralelo al eje y focal dirigido hacia F. Las focales de la tabla son distancias de cada elemento aislado, no sus coordenadas ni la focal del conjunto.')
     st.write('Traza estos rayos: '+ '; '.join(r['label'] for r in ex['rays'])+'.')
     with st.expander('Cómo resolver el ejercicio'):
         st.markdown('''1. Selecciona «Colocar objeto O» y haz clic en su posición sobre el eje. La altura está fijada por el enunciado.
-2. Coloca E1, E2 y E3, según corresponda. Puedes recolocarlos seleccionándolos otra vez; al moverlos se borran los rayos anteriores.
-3. Elige un tipo de rayo. El principal y los dos marginales parten del mismo extremo O del objeto, a la altura indicada en el enunciado. Los marginales delimitan por arriba y por abajo el haz admitido desde ese punto. Marca después cada punto de refracción o reflexión. Una lente gruesa exige dos puntos, uno por cara; en el retorno, repite las caras alcanzadas.
+2. E1 ya está fijado en x=0. Coloca E2 y E3 cuando aparezcan. Puedes recolocarlos seleccionándolos otra vez; al moverlos se borran los rayos anteriores.
+3. Elige un tipo de rayo. El chief, el paralelo y el focal parten del mismo extremo O. El paralelo entra horizontal; el focal apunta al foco anterior F del sistema (o a su prolongación). En lentes gruesas, la focal se mide desde los planos principales. La salida del focal es paralela solo en la aproximación paraxial; la revisión exacta aplica Snell en cada cara. Marca después cada punto de refracción o reflexión. Una lente gruesa exige dos puntos, uno por cara; en el retorno, repite las caras alcanzadas.
 4. El segmento discontinuo sigue al ratón. Consulta altura y ángulo físico; la escala vertical del dibujo está ampliada. «Ajustar a la superficie» ayuda a colocar el punto sobre la curva sin calcular la dirección por ti.
 5. Haz doble clic para fijar el extremo final, al menos 10 mm después de la última interacción. También puedes fijar el punto y pulsar «Terminar rayo».
-6. Para prolongar un rayo hacia el espacio virtual, termínalo primero y selecciona «Prolongación virtual» para ese rayo. Mueve el cursor hacia atrás desde la última interacción y haz clic para fijar la longitud: la prolongación se dibuja discontinua sobre la recta de salida que tú has trazado.
+6. Al terminar dos rayos, sus salidas se prolongan automáticamente con líneas discontinuas si se cruzan hacia atrás. Para ajustar una prolongación manualmente, selecciona «Prolongación virtual» para ese rayo. Mueve el cursor hacia atrás desde la última interacción y haz clic para fijar la longitud: la prolongación se dibuja discontinua sobre la recta de salida que tú has trazado.
 7. Prolonga varios rayos y marca su cruce con «Marcar imagen virtual O′». Para hallar F′ usa rayos auxiliares que lleguen paralelos al eje; los rayos de un objeto finito determinan su imagen, no el foco. Dibuja esos rayos con «Dibujar rayo auxiliar» y prolonga después sus salidas. «Marcar foco virtual F′» coloca tu punto sobre el eje. Puedes marcar también un objeto virtual con Oᵥ. Usa «Zoom −» si el cruce queda fuera de la vista.
 8. Las prolongaciones, los rayos auxiliares y las marcas son construcciones libres: se guardan con tu dibujo, pero no cuentan como interacciones y no se califican. Solo se revisan los rayos pedidos en el enunciado.
 9. Pulsa «He terminado» y corrige los errores indicados. Puedes entregar de nuevo tantas veces como necesites.
@@ -84,7 +86,7 @@ def render_exercise_portal():
 **Teclado:** enfoca el canvas; las flechas desplazan el cursor, Intro coloca un punto, Mayús+Intro termina, Retroceso deshace y Escape cancela el rayo actual.''')
     st.caption(f'Tolerancias de revisión: posiciones e interacciones ±{ex["point_tolerance"]:g} mm; direcciones ±{ex["angle_tolerance"]:g}°. Las lentes conservan su diámetro útil: un rayo no puede atravesar una zona sin vidrio.')
     st.subheader('2 · Tu trazado')
-    st.caption('El canvas empieza sin objeto, elementos, rayos ni referencias de la solución. La cuadrícula y el eje sirven para colocar tu propio dibujo; las correcciones aparecen debajo.')
+    st.caption('El primer elemento está fijado en x=0; el canvas no muestra focos ni rayos de solución. La cuadrícula y el eje sirven para colocar tu propio dibujo; las correcciones aparecen debajo.')
     key='exercise_canvas_'+ex['id']
     previous=st.session_state.get(key, {})
     scene=previous.get('value', st.session_state.exercise_scene)

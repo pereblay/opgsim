@@ -22,6 +22,8 @@ class AppTests(unittest.TestCase):
                 next(s for s in app.selectbox if s.label == 'Modelo de rayos').select(mode).run()
                 self.assertFalse(app.exception, (preset, mode, app.exception))
                 self.assertFalse(app.error, (preset, mode, app.error))
+                if app.session_state['elements']:
+                    self.assertEqual(app.session_state['elements'][0]['position'],0.)
                 plot = json.loads(app.get('plotly_chart')[1].proto.spec)
                 self.assertFalse(any(a.get('showarrow', False) for a in plot['layout'].get('annotations', [])))
                 self.assertEqual(plot['layout']['legend']['groupclick'], 'togglegroup')
@@ -102,7 +104,7 @@ class AppTests(unittest.TestCase):
         self.assertFalse(any(s.label=='Modalidad del ejercicio' for s in app.selectbox))
         app.button(key='generate_exercise').click().run()
         ex=app.session_state['exercise']
-        self.assertEqual(ex['mode'],'chief_marginal')
+        self.assertEqual(ex['mode'],'parallel_focal')
         scene=solved(ex)
         app.session_state['exercise_canvas_'+ex['id']]={'value':scene,'submitted':scene}
         app.run()

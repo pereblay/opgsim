@@ -20,7 +20,7 @@ def reference_rays(elements, object_x, height, xmin, xmax, mode='construction'):
     # No entrance aperture or diaphragm is part of the exercise.
     boundaries = geometry(elements, 100, 550)[1:]
     candidates = [(label, height, slope) for label, slope in candidates]
-    if mode == 'chief_marginal':
+    if mode in ('chief_marginal', 'parallel_focal'):
         slope = admitted_interval(result['path'], object_x, 0.)[1]
         slope *= exact_axial_aperture_scale(boundaries, object_x, 0., slope, xmin, xmax)
         # Identify the actual limiting face on the exact marginal's itinerary.
@@ -55,6 +55,12 @@ def reference_rays(elements, object_x, height, xmin, xmax, mode='construction'):
         candidates=[('Principal (chief) · centro del stop',height,chief_slope),
                     ('Marginal superior · borde útil',height,interval[1]),
                     ('Marginal inferior · borde útil',height,interval[0])]
+    if mode == 'parallel_focal':
+        focus=result['front_focus']
+        if focus is None or abs(focus-object_x)<1e-6:
+            raise ValueError('No finite front focus for this exercise.')
+        candidates=[candidates[0], ('Paralelo al eje',height,0.),
+                    ('Rayo focal · dirigido hacia F',height,-height/(focus-object_x))]
     rays = []
     for i, (label, ray_height, slope) in enumerate(candidates):
         ray = trace_exact(boundaries, object_x, ray_height, math.atan(slope), xmin, xmax)
@@ -78,10 +84,10 @@ def reference_rays(elements, object_x, height, xmin, xmax, mode='construction'):
     return rays, result
 
 
-def generate_exercise(count, seed, mode='chief_marginal'):
+def generate_exercise(count, seed, mode='parallel_focal'):
     if count not in (1, 2, 3):
         raise ValueError('El número de elementos debe estar entre 1 y 3.')
-    if mode not in ('chief_marginal','construction'):
+    if mode not in ('chief_marginal','construction','parallel_focal'):
         raise ValueError('Modalidad de ejercicio desconocida.')
     rng = random.Random(seed)
     catalogue = {e.kind: e for group in PRESETS.values() for e in group if e.kind != 'Diafragma'}
@@ -94,7 +100,7 @@ def generate_exercise(count, seed, mode='chief_marginal'):
             chosen.append(rng.choice(mirrors))
         elements = []
         for i, template in enumerate(chosen):
-            element = replace(template, name=f'E{i+1}', position=float(30+85*i+rng.randrange(0, 3)*5),
+            element = replace(template, name=f'E{i+1}', position=float(85*i+(rng.randrange(0, 3)*5 if i else 0)),
                               aperture=float(rng.randrange(32, 45, 2)), thickness=float(rng.randrange(5, 9)) if template.lens else 0.,
                               r1=float(rng.randrange(90, 171, 10)), r2=-float(rng.randrange(90, 171, 10)))
             elements.append(element)
@@ -104,7 +110,7 @@ def generate_exercise(count, seed, mode='chief_marginal'):
             rays, result = reference_rays(elements, obj, height, xmin, xmax, mode)
         except ValueError:
             continue
-        return dict(id=f'{seed}-{count}-{mode}-tip-v2', revision='tip-v2', seed=seed, mode=mode, stop=result.get('exercise_stop'), elements=[asdict(e) for e in elements],
+        return dict(id=f'{seed}-{count}-{mode}-origin-v3', revision='origin-v3', seed=seed, mode=mode, stop=result.get('exercise_stop'), elements=[asdict(e) for e in elements],
                     object_x=obj, object_height=height, rays=rays, xmin=xmin, xmax=xmax,
                     front_focus=result['front_focus'], principal=result['h1'],
                     position_tolerance=POSITION_TOL, point_tolerance=POINT_TOL, angle_tolerance=ANGLE_TOL)

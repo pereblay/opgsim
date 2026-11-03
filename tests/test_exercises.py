@@ -14,6 +14,11 @@ class ExerciseTests(unittest.TestCase):
             for seed in range(20):
                 ex=generate_exercise(count, seed)
                 self.assertEqual(len(ex['elements']),count)
+                self.assertEqual(ex['elements'][0]['position'],0.)
+                self.assertIn('Paralelo',ex['rays'][1]['label'])
+                self.assertIn('focal',ex['rays'][2]['label'])
+                self.assertEqual(ex['rays'][1]['slope'],0.)
+                self.assertAlmostEqual(ex['rays'][2]['slope'],-ex['object_height']/(ex['front_focus']-ex['object_x']))
                 self.assertLessEqual(sum(e['kind'].startswith('Espejo') for e in ex['elements']),1)
                 self.assertTrue(assess_exercise(ex,solved(ex))['correct'], (count,seed))
                 self.assertTrue(all(e['kind']!='Diafragma' for e in ex['elements']))
@@ -26,7 +31,7 @@ class ExerciseTests(unittest.TestCase):
         self.assertTrue(any('posición incorrecta' in m for m in assess_exercise(ex,scene)['issues']))
 
     def test_wrong_intersection_and_reflection_detected(self):
-        ex=generate_exercise(1,123)  # Plane mirror
+        ex=generate_exercise(1,123,'chief_marginal')  # Legacy mirror case
         scene=solved(ex);scene['rays'][0]['points'][1][0]+=20
         self.assertTrue(any('superficie' in m for m in assess_exercise(ex,scene)['issues']))
         scene=solved(ex);p=scene['rays'][0]['points']
@@ -52,7 +57,7 @@ class ExerciseTests(unittest.TestCase):
         for count in [0,4,-1]:
             with self.assertRaises(ValueError):generate_exercise(count,1)
 
-    def test_chief_and_marginals_share_object_tip(self):
+    def test_chief_parallel_and_focal_share_object_tip(self):
         for n in [1,2,3]:
             ex=generate_exercise(n,42)
             chief,upper,lower=ex['rays']
@@ -104,7 +109,7 @@ class ExerciseTests(unittest.TestCase):
                      auxiliary=[{'id':'aux1','points':[[0,1],[20,1]]}])
         self.assertTrue(assess_exercise(ex,scene)['correct'])
 
-    def test_marginal_started_on_axis_is_rejected_with_tip_instruction(self):
+    def test_parallel_started_on_axis_is_rejected_with_tip_instruction(self):
         ex=generate_exercise(1,42)
         scene=solved(ex)
         scene['rays'][1]['points'][0][1]=0

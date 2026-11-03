@@ -1,3 +1,20 @@
+// Back-project only a divergent bundle: an angle sign alone is insufficient.
+export function automaticExtensions(rays) {
+  const exits=rays.filter(r=>r.points?.length>=2).map(r=>{
+    const a=r.points.at(-2), z=r.points.at(-1), dx=z[0]-a[0], dy=z[1]-a[1];
+    if(Math.abs(dx)<1e-10)return null;
+    const slope=dy/dx;return {id:r.id,a,dx,slope,intercept:a[1]-slope*a[0]};
+  }).filter(Boolean);
+  if(exits.length<2)return {};
+  const meanB=exits.reduce((v,e)=>v+e.slope,0)/exits.length;
+  const meanA=exits.reduce((v,e)=>v+e.intercept,0)/exits.length;
+  const denominator=exits.reduce((v,e)=>v+(e.slope-meanB)**2,0);
+  if(denominator<1e-14)return {};
+  const x=-exits.reduce((v,e)=>v+(e.slope-meanB)*(e.intercept-meanA),0)/denominator;
+  if(!Number.isFinite(x)||Math.abs(x)>1e6)return {};
+  return Object.fromEntries(exits.filter(e=>(x-e.a[0])/e.dx < -1e-8).map(e=>[e.id,[x,e.intercept+e.slope*x]]));
+}
+
 export default function(component) {
   const {parentElement, data, setStateValue, setTriggerValue} = component;
   const root=parentElement.querySelector('.exercise-root');
@@ -6,12 +23,12 @@ export default function(component) {
   const status=root.querySelector('[data-status]');
   const ex=data.exercise;
   let scene=structuredClone(data.scene || {placements:{},rays:[],draft:[],tool:'place:object'});
-  scene.placements ||= {}; scene.rays ||= []; scene.draft ||= []; scene.tool ||= 'place:object';
+  scene.placements ||= {}; scene.placements[ex.elements[0].name]=[0,0]; scene.rays ||= []; scene.draft ||= []; scene.tool ||= 'place:object';
   scene.extensions ||= {}; scene.virtualPoints ||= {}; scene.auxiliary ||= [];
   let cursor=null, timer=null, width=1000, height=490;
   let zoom=scene.zoom||1;
   const colors=['#2563eb','#d97706','#16816b'];
-  const options=[['place:object','Colocar objeto O'],...ex.elements.map(e=>['place:'+e.name,'Colocar '+e.name+' · '+e.kind]),...ex.rays.map(r=>['ray:'+r.id,r.label]),
+  const options=[['place:object','Colocar objeto O'],...ex.elements.slice(1).map(e=>['place:'+e.name,'Colocar '+e.name+' · '+e.kind]),...ex.rays.map(r=>['ray:'+r.id,r.label]),
     ['auxiliary','Dibujar rayo auxiliar (continuo)'],
     ...ex.rays.map(r=>['extend:'+r.id,'Prolongación virtual · '+r.label]),
     ['mark:image','Marcar imagen virtual O′'],['mark:focus','Marcar foco virtual F′'],['mark:object','Marcar objeto virtual Oᵥ']];
@@ -76,8 +93,9 @@ export default function(component) {
     }
     if(scene.placements.object){const x=scene.placements.object[0];path([[x,0],[x,ex.object_height]],'#18263c',false,4);dot([x,ex.object_height],'#18263c',4);text('O',[x,ex.object_height]);}
     for(const ray of allRays()){const i=ex.rays.findIndex(r=>r.id===ray.id);path(ray.points,colors[Math.max(0,i)%3]);for(const p of ray.points)dot(p,colors[Math.max(0,i)%3],2.5);}
+    const automatic=automaticExtensions(scene.rays);
     for(const ray of allRays()){
-      const endpoint=scene.extensions[ray.id];
+      const endpoint=scene.extensions[ray.id]||automatic[ray.id];
       if(endpoint){const i=ex.rays.findIndex(r=>r.id===ray.id);path([ray.points.at(-2),endpoint],colors[Math.max(0,i)%3],true);}
     }
     if(scene.tool.startsWith('extend:')&&cursor){
@@ -90,7 +108,7 @@ export default function(component) {
     }
     if(scene.draft.length){const i=ex.rays.findIndex(r=>'ray:'+r.id===scene.tool);const color=colors[Math.max(0,i)%3];path(scene.draft,color);for(const p of scene.draft)dot(p,color);if(cursor)path([scene.draft.at(-1),cursor],color,true);}
     if(cursor){dot(cursor,'#111827',3);if(scene.tool.startsWith('place:'))path([[cursor[0],b.ymin],[cursor[0],b.ymax]],'#94a3b8',true,1);}
-    status.textContent=`${Object.keys(scene.placements).length}/${ex.elements.length+1} posiciones · ${scene.rays.length}/${ex.rays.length} rayos terminados`+` · ${Object.keys(scene.extensions).length} prolongaciones virtuales`+(scene.draft.length?` · ${scene.draft.length} puntos en el rayo actual`:'');
+    status.textContent=`${Object.keys(scene.placements).length}/${ex.elements.length+1} posiciones · ${scene.rays.length}/${ex.rays.length} rayos terminados`+` · ${new Set([...Object.keys(automatic),...Object.keys(scene.extensions)]).size} prolongaciones virtuales`+(scene.draft.length?` · ${scene.draft.length} puntos en el rayo actual`:'');
   }
   function showCursor(p){cursor=snap(p);const prev=scene.draft.at(-1);let msg=`x = ${cursor[0].toFixed(2)} mm · altura y = ${cursor[1].toFixed(2)} mm`;
     if(prev){const dx=cursor[0]-prev[0],dy=cursor[1]-prev[1];msg+=` · Δx = ${dx.toFixed(2)} · Δy = ${dy.toFixed(2)} mm · ángulo / +x = ${(Math.atan2(dy,dx)*180/Math.PI).toFixed(2)}°`;}
@@ -117,7 +135,7 @@ export default function(component) {
     }
     if(scene.tool.startsWith('mark:')){scene.virtualPoints[scene.tool.slice(5)]=[...p];save();draw();return;}
     if(scene.tool.startsWith('place:')){
-      const name=scene.tool.slice(6);scene.placements[name]=[Math.round(p[0]),0];scene.rays=[];scene.draft=[];scene.extensions={};scene.virtualPoints={};scene.auxiliary=[];refreshTools();
+      const name=scene.tool.slice(6);scene.placements[name]=[name===ex.elements[0].name?0:Math.round(p[0]),0];scene.rays=[];scene.draft=[];scene.extensions={};scene.virtualPoints={};scene.auxiliary=[];refreshTools();
       const next=options.find(([value])=>value.startsWith('place:')&&!scene.placements[value.slice(6)]);
       scene.tool=next?next[0]:'ray:'+ex.rays[0].id;tool.value=scene.tool;
     }else{
@@ -141,7 +159,7 @@ export default function(component) {
     else {const id=scene.tool.slice(4);scene.rays=scene.rays.filter(r=>r.id!==id);delete scene.extensions[id];}
     scene.draft=[];save();draw();
   };
-  root.querySelector('[data-reset]').onclick=()=>{clearTimeout(timer);cursor=null;scene={placements:{},rays:[],draft:[],tool:'place:object',zoom:1,extensions:{},virtualPoints:{},auxiliary:[]};zoom=1;refreshTools();save();draw();};
+  root.querySelector('[data-reset]').onclick=()=>{clearTimeout(timer);cursor=null;scene={placements:{[ex.elements[0].name]:[0,0]},rays:[],draft:[],tool:'place:object',zoom:1,extensions:{},virtualPoints:{},auxiliary:[]};zoom=1;refreshTools();save();draw();};
   root.querySelector('[data-finish]').onclick=()=>{clearTimeout(timer);save();setTriggerValue('submitted',structuredClone(scene));};
   root.querySelector('[data-end-ray]').onclick=()=>{clearTimeout(timer);finishRay();save();draw();};
   for(const name of ['snap'])root.querySelector(`[data-${name}]`).onchange=()=>{scene[name]=root.querySelector(`[data-${name}]`).checked;save();draw();};
