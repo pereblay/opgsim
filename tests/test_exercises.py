@@ -24,6 +24,33 @@ class ExerciseTests(unittest.TestCase):
                 self.assertTrue(all(e['kind']!='Diafragma' for e in ex['elements']))
         self.assertEqual(generate_exercise(3,42),generate_exercise(3,42))
 
+    def test_thin_lens_rules_and_single_interaction(self):
+        from optics import Element
+        from exercises import reference_rays
+        lens = Element(name='E1', kind='Biconvexa', position=0., aperture=40.,
+                       thickness=4., index=1.5, r1=50., r2=-50.)
+        rays, result = reference_rays([lens], -100., 5., -200., 250.,
+                                      mode='parallel_focal', thin_lens=True)
+        self.assertAlmostEqual(result['focal'], 50.)
+        self.assertAlmostEqual(result['image_x'], 100.)
+        for ray in rays:
+            self.assertEqual(len(ray['surfaces']), 1)
+            self.assertEqual(ray['points'][1][0], 0.)
+        self.assertAlmostEqual(rays[2]['directions'][-1][1], 0.)
+        parallel = rays[1]
+        q, d = parallel['points'][1], parallel['directions'][0]
+        self.assertAlmostEqual(q[0]-q[1]*d[0]/d[1], 50.)
+
+    def test_thin_exercises_round_trip_and_flat_shapes(self):
+        for count in [1, 2, 3]:
+            for seed in range(20):
+                ex = generate_exercise(count, seed, thin_lens=True)
+                self.assertTrue(assess_exercise(ex, solved(ex))['correct'])
+                expected = count if not any(e['kind'].startswith('Espejo') for e in ex['elements']) else 2*count-1
+                self.assertTrue(all(len(r['surfaces']) == expected for r in ex['rays']))
+                for shape in public_exercise(ex)['shapes']:
+                    self.assertTrue(all(p[0] == 0. for p in shape))
+
     def test_wrong_placement_and_missing_rays(self):
         ex=generate_exercise(1,123)
         self.assertFalse(assess_exercise(ex,{})['correct'])

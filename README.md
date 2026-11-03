@@ -65,8 +65,12 @@ El rayo principal (chief) parte de un punto de campo y atraviesa el centro del s
 
 Las lentes finas (por ejemplo, grosor 0,1 mm) y los radios pequeños se aceptan sin aumentarlos artificialmente. El diámetro útil se recorta al cruce de las caras o al diámetro de la esfera, y se informa del valor corregido. Dibujo, monturas y cálculo usan esa misma abertura. Las caras que se encuentran en una arista se procesan sucesivamente para conservar ambos cambios de medio.
 
-En el taller se pueden añadir rayos auxiliares, prolongaciones virtuales discontinuas hacia atrás del último tramo y marcas manuales O′ y F′. Las salidas divergentes se prolongan automáticamente hacia su cruce virtual usando los segmentos del alumno; este puede ajustar las prolongaciones manualmente. El criterio usa la dirección de propagación, también en espejos, y no solo el signo del ángulo. La aplicación no revela soluciones precalculadas. Para hallar un foco se trazan auxiliares incidentes paralelos, mientras que el haz desde O determina la imagen. Estas construcciones se conservan, se pueden borrar y no cuentan como interacciones de los rayos evaluados.
+En el taller se pueden añadir rayos auxiliares, prolongaciones virtuales discontinuas hacia atrás del último tramo y marcas manuales O′, F y F′. Las salidas divergentes se prolongan automáticamente hacia su cruce virtual usando los segmentos del alumno; este puede ajustar las prolongaciones manualmente. El criterio usa la dirección de propagación, también en espejos, y no solo el signo del ángulo. La aplicación no revela soluciones precalculadas. Para hallar un foco se trazan auxiliares incidentes paralelos, mientras que el haz desde O determina la imagen. Estas construcciones se conservan, se pueden borrar y no cuentan como interacciones de los rayos evaluados.
 
 El banco permite seleccionar también «Paralelo al eje» y «Rayo focal», además del chief, los marginales y el haz. Si O está sobre el eje, algunos de estos rayos coinciden.
 
 El objeto del banco puede situarse por encima o por debajo del eje, o centrado simétricamente; su altura indica siempre el tamaño total.
+
+En el taller, «Aproximación de lente delgada» está activada por defecto: cada lente se representa en un solo plano, con potencia (n−1)(1/R₁−1/R₂), y los espejos se tratan paraxialmente en su vértice. Al desactivarla se recuperan las dos caras, el espesor y Snell/reflexión exactos. Cambiar el modelo reinicia el dibujo; el enunciado, las focales y la corrección usan siempre el modelo activo.
+
+Referencia del modelo de lente delgada: [OpenStax, Thin Lenses](https://openstax.org/books/university-physics-volume-3/pages/2-4-thin-lenses).

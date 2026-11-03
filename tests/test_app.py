@@ -40,6 +40,22 @@ class AppTests(unittest.TestCase):
                         self.assertIn(label+'G' if mode.startswith('Exacto') and label != 'O' else label, labels)
         print('All presets, both tracing models, O/O′ styles and focal labels verified.')
 
+    def test_exercise_thin_lens_default_and_toggle(self):
+        app = AppTest.from_file(APP, default_timeout=30).run()
+        app.button(key='open_exercises').click().run()
+        self.assertTrue(app.checkbox(key='exercise_thin_lens').value)
+        app.button(key='generate_exercise').click().run()
+        self.assertTrue(app.session_state['exercise']['thin_lens'])
+        first_id = app.session_state['exercise']['id']
+        app.checkbox(key='exercise_thin_lens').uncheck().run()
+        self.assertFalse(app.exception)
+        self.assertFalse(app.session_state['exercise']['thin_lens'])
+        app.checkbox(key='exercise_thin_lens').check().run()
+        self.assertFalse(app.exception)
+        self.assertTrue(app.session_state['exercise']['thin_lens'])
+        self.assertNotEqual(app.session_state['exercise']['id'], first_id)
+        self.assertEqual(app.session_state['exercise_scene']['rays'], [])
+
     def test_add_remove_preserves_configuration(self):
         app = AppTest.from_file(APP, default_timeout=30).run()
         next(b for b in app.button if b.label == 'Añadir elemento').click().run()

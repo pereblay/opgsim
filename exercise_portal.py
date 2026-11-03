@@ -43,22 +43,29 @@ def render_exercise_portal():
         st.session_state.portal = 'simulator'
         st.rerun()
     st.write('Construye el banco indicado y traza los rayos pedidos. Cada clic fija un punto; un doble clic termina el rayo.')
+    thin_lens = st.checkbox('Aproximación de lente delgada', value=st.session_state.get('exercise', {}).get('thin_lens', True), key='exercise_thin_lens',
+                            help='Un único plano por lente y trazado paraxial. Al cambiar el modelo se reinicia el dibujo del ejercicio.')
     c1, c2 = st.columns([2, 1], vertical_alignment='bottom')
     count = c1.selectbox('Número de elementos ópticos', [1, 2, 3], key='exercise_count')
     new = c2.button('Generar ejercicio', key='generate_exercise')
-    if new:
-        st.session_state.exercise = generate_exercise(count, secrets.randbits(32))
+    previous_exercise = st.session_state.get('exercise')
+    model_changed = previous_exercise is not None and previous_exercise.get('thin_lens', False) != thin_lens
+    if new or model_changed:
+        seed = secrets.randbits(32) if new else previous_exercise['seed']
+        st.session_state.exercise = generate_exercise(count, seed, thin_lens=thin_lens)
+        st.session_state.exercise['id'] += '-'+secrets.token_hex(4)
         st.session_state.exercise_scene = dict(placements={}, rays=[], draft=[], tool='place:object')
         st.session_state.exercise_feedback = None
     if 'exercise' not in st.session_state:
         st.info('Elige uno, dos o tres elementos y pulsa «Generar ejercicio» para comenzar.')
         return
     ex = st.session_state.exercise
-    if ex.get('mode') != 'parallel_focal' or ex.get('revision') != 'origin-v3':
+    if ex.get('mode') != 'parallel_focal' or ex.get('revision') != 'thin-v4':
         st.info('Pulsa «Generar ejercicio» para practicar chief, paralelo y focal con el primer elemento en x=0. Tu dibujo anterior se conserva hasta entonces.')
         return
     if count != len(ex['elements']):
         st.caption('Pulsa «Generar ejercicio» para aplicar el nuevo número de elementos.')
+    st.caption('Modelo activo: lentes delgadas y espejos paraxiales; una interacción por elemento y por paso.' if ex['thin_lens'] else 'Modelo activo: superficies reales, Snell y reflexión exacta; dos caras por lente.')
     st.header('Enunciado:')
     st.write(f'Sitúa el objeto O en **x = {ex["object_x"]:g} mm**, con altura **{ex["object_height"]:g} mm**. La luz sale inicialmente hacia la derecha. Coloca los siguientes elementos centrados en el eje:')
     properties=[]
@@ -66,8 +73,8 @@ def render_exercise_portal():
         e=Element(**data)
         r1,r2=e.radii() if e.lens else (math.inf if e.kind=='Espejo plano' else (-abs(e.r1) if e.kind=='Espejo cóncavo' else abs(e.r1)), None)
         radius=lambda r: '—' if r is None else ('∞' if math.isinf(r) else f'{r:+g}')
-        focal=physical_paraxial([e],100,550,ex['object_x'])['focal']
-        properties.append({'Focal efectiva (mm)': '∞' if focal is None else f'{focal:.3f}', 'Elemento':e.name,'Tipo':e.kind,'Posición (mm)':e.position,'Altura / diámetro (mm)':e.aperture,'Grosor (mm)':e.thickness,'n':f'{e.index:g}' if e.lens else '—','R₁ (mm)':radius(r1),'R₂ (mm)':radius(r2)})
+        focal=physical_paraxial([e],100,550,ex['object_x'], thin_lens=ex['thin_lens'])['focal']
+        properties.append({'Focal efectiva (mm)': '∞' if focal is None else f'{focal:.3f}', 'Elemento':e.name,'Tipo':e.kind,'Posición (mm)':e.position,'Altura / diámetro (mm)':e.aperture,'Grosor del modelo (mm)':0. if ex['thin_lens'] and e.lens else e.thickness,'n':f'{e.index:g}' if e.lens else '—','R₁ (mm)':radius(r1),'R₂ (mm)':radius(r2)})
     st.dataframe(properties, hide_index=True, width='stretch')
     st.caption('Radios cartesianos: centro de curvatura a la derecha, R positivo; cara plana, R=∞. Aire exterior n=1; luz de 550 nm. No hay diafragmas. Un espejo, si aparece, es el último elemento y refleja toda la luz.')
     st.write('Los tres rayos salen del mismo extremo O: chief al centro del stop, paralelo al eje y focal dirigido hacia F. Las focales de la tabla son distancias de cada elemento aislado, no sus coordenadas ni la focal del conjunto.')
@@ -75,11 +82,11 @@ def render_exercise_portal():
     with st.expander('Cómo resolver el ejercicio'):
         st.markdown('''1. Selecciona «Colocar objeto O» y haz clic en su posición sobre el eje. La altura está fijada por el enunciado.
 2. E1 ya está fijado en x=0. Coloca E2 y E3 cuando aparezcan. Puedes recolocarlos seleccionándolos otra vez; al moverlos se borran los rayos anteriores.
-3. Elige un tipo de rayo. El chief, el paralelo y el focal parten del mismo extremo O. El paralelo entra horizontal; el focal apunta al foco anterior F del sistema (o a su prolongación). En lentes gruesas, la focal se mide desde los planos principales. La salida del focal es paralela solo en la aproximación paraxial; la revisión exacta aplica Snell en cada cara. Marca después cada punto de refracción o reflexión. Una lente gruesa exige dos puntos, uno por cara; en el retorno, repite las caras alcanzadas.
+3. Elige un tipo de rayo. El chief, el paralelo y el focal parten del mismo extremo O. El paralelo entra horizontal; el focal apunta al foco anterior F del sistema (o a su prolongación). En lentes gruesas, la focal se mide desde los planos principales. En el modelo paraxial, el rayo focal sale paralelo. Con la aproximación desactivada, la revisión aplica Snell en cada cara y puede aparecer aberración. Marca después cada punto de refracción o reflexión. Con la aproximación de lente delgada, marca un solo punto en el plano de cada lente; los espejos se tratan también paraxialmente en su plano de vértice. Al desactivarla, una lente gruesa exige dos puntos, uno por cara. En el retorno, repite las interacciones alcanzadas.
 4. El segmento discontinuo sigue al ratón. Consulta altura y ángulo físico; la escala vertical del dibujo está ampliada. «Ajustar a la superficie» ayuda a colocar el punto sobre la curva sin calcular la dirección por ti.
 5. Haz doble clic para fijar el extremo final, al menos 10 mm después de la última interacción. También puedes fijar el punto y pulsar «Terminar rayo».
 6. Al terminar dos rayos, sus salidas se prolongan automáticamente con líneas discontinuas si se cruzan hacia atrás. Para ajustar una prolongación manualmente, selecciona «Prolongación virtual» para ese rayo. Mueve el cursor hacia atrás desde la última interacción y haz clic para fijar la longitud: la prolongación se dibuja discontinua sobre la recta de salida que tú has trazado.
-7. Prolonga varios rayos y marca su cruce con «Marcar imagen virtual O′». Para hallar F′ usa rayos auxiliares que lleguen paralelos al eje; los rayos de un objeto finito determinan su imagen, no el foco. Dibuja esos rayos con «Dibujar rayo auxiliar» y prolonga después sus salidas. «Marcar foco virtual F′» coloca tu punto sobre el eje. Usa «Zoom −» si el cruce queda fuera de la vista.
+7. Prolonga varios rayos y marca su cruce con «Marcar imagen virtual O′». Para hallar F′ usa rayos auxiliares que lleguen paralelos al eje; los rayos de un objeto finito determinan su imagen, no el foco. Dibuja esos rayos con «Dibujar rayo auxiliar» y prolonga después sus salidas. «Marcar foco F» permite señalar el foco objeto; «Marcar foco virtual F′», el foco imagen virtual. Ambas marcas se sitúan sobre el eje óptico. Usa «Zoom −» si el cruce queda fuera de la vista.
 8. Las prolongaciones, los rayos auxiliares y las marcas son construcciones libres: se guardan con tu dibujo, pero no cuentan como interacciones y no se califican. Solo se revisan los rayos pedidos en el enunciado.
 9. Pulsa «He terminado» y corrige los errores indicados. Puedes entregar de nuevo tantas veces como necesites.
 

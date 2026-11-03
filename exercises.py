@@ -5,14 +5,51 @@ import random
 import numpy as np
 from optics import Element, sag, admitted_interval
 from presets import PRESETS
-from raytrace import geometry, physical_paraxial, construction_rays, trace_exact, exact_axial_aperture_scale, exact_admitted_interval
+from raytrace import geometry, physical_paraxial, construction_rays, trace_exact, trace_gaussian, exact_axial_aperture_scale, exact_admitted_interval
 
 POSITION_TOL = 2.0  # mm, generous enough for clicks; shown to students
 POINT_TOL = 2.0
 ANGLE_TOL = 2.0  # degrees in physical coordinates
 
 
-def reference_rays(elements, object_x, height, xmin, xmax, mode='construction'):
+def thin_reference_rays(elements, object_x, height, xmin, xmax, mode):
+    result = physical_paraxial(elements, 100, 550, object_x, thin_lens=True)
+    path = result['path']
+    stop = result['stop']
+    a, b = (result['pre'][stop] @ np.array([[1., -object_x], [0., 1.]]))[0]
+    if abs(b) < 1e-9:
+        raise ValueError('Singular chief aiming.')
+    result['exercise_stop'] = dict(name=path[stop].name, x=path[stop].x)
+    candidates = [('Principal (chief) · centro del stop', -a*height/b)]
+    if mode == 'parallel_focal':
+        focus = result['front_focus']
+        if focus is None or abs(focus-object_x) < 1e-6:
+            raise ValueError('No finite front focus for this exercise.')
+        candidates += [('Paralelo al eje', 0.), ('Rayo focal · dirigido hacia F', -height/(focus-object_x))]
+    elif mode == 'chief_marginal':
+        interval = admitted_interval(path, object_x, height)
+        if interval is None:
+            raise ValueError('No admitted bundle.')
+        candidates += [('Marginal superior · borde útil', interval[1]), ('Marginal inferior · borde útil', interval[0])]
+    else:
+        candidates = construction_rays(result, object_x, height)
+    rays = []
+    for i, (label, slope) in enumerate(candidates):
+        ray = trace_gaussian(result, object_x, height, slope, xmin, xmax)
+        if ray['blocked'] or abs(slope) > .25:
+            raise ValueError('Unsuitable paraxial ray.')
+        events = [e for e in ray['events'] if e['event'] != 'Abertura']
+        points = [[object_x, height]] + [e['point'].tolist() for e in events]
+        points.append([float(ray['x'][-1]), float(ray['y'][-1])])
+        rays.append(dict(id=f'ray{i}', label=label, slope=float(slope), points=points,
+                         surfaces=[e['surface'] for e in events],
+                         directions=[e['outgoing'].tolist() for e in events]))
+    return rays, result
+
+
+def reference_rays(elements, object_x, height, xmin, xmax, mode='construction', thin_lens=False):
+    if thin_lens:
+        return thin_reference_rays(elements, object_x, height, xmin, xmax, mode)
     result = physical_paraxial(elements, 100, 550, object_x)
     candidates = construction_rays(result, object_x, height)
     if len(candidates) < 2:
@@ -84,7 +121,7 @@ def reference_rays(elements, object_x, height, xmin, xmax, mode='construction'):
     return rays, result
 
 
-def generate_exercise(count, seed, mode='parallel_focal'):
+def generate_exercise(count, seed, mode='parallel_focal', thin_lens=False):
     if count not in (1, 2, 3):
         raise ValueError('El número de elementos debe estar entre 1 y 3.')
     if mode not in ('chief_marginal','construction','parallel_focal'):
@@ -107,10 +144,10 @@ def generate_exercise(count, seed, mode='parallel_focal'):
         obj, height = float(-rng.randrange(80, 151, 10)), float(rng.choice([3, 4, 5]))
         xmin, xmax = -220., float(elements[-1].position+180)
         try:
-            rays, result = reference_rays(elements, obj, height, xmin, xmax, mode)
+            rays, result = reference_rays(elements, obj, height, xmin, xmax, mode, thin_lens)
         except ValueError:
             continue
-        return dict(id=f'{seed}-{count}-{mode}-origin-v3', revision='origin-v3', seed=seed, mode=mode, stop=result.get('exercise_stop'), elements=[asdict(e) for e in elements],
+        return dict(id=f'{seed}-{count}-{mode}-thin-{int(thin_lens)}-v4', revision='thin-v4', thin_lens=thin_lens, seed=seed, mode=mode, stop=result.get('exercise_stop'), elements=[asdict(e) for e in elements],
                     object_x=obj, object_height=height, rays=rays, xmin=xmin, xmax=xmax,
                     front_focus=result['front_focus'], principal=result['h1'],
                     position_tolerance=POSITION_TOL, point_tolerance=POINT_TOL, angle_tolerance=ANGLE_TOL)
@@ -125,7 +162,9 @@ def public_exercise(exercise):
     for row in exercise['elements']:
         e = Element(**row)
         ys = np.linspace(-e.aperture/2, e.aperture/2, 151)
-        if e.lens:
+        if exercise.get('thin_lens'):
+            points = [[0., -e.aperture/2], [0., e.aperture/2]]
+        elif e.lens:
             r1, r2 = e.radii()
             points = np.column_stack((sag(r1, ys), ys)).tolist()
             points += np.column_stack((e.thickness+sag(r2, ys[::-1]), ys[::-1])).tolist()
@@ -197,7 +236,8 @@ def assess_exercise(exercise, scene):
             continue
         if len(pts) != len(target):
             route = ' → '.join(expected['surfaces'])
-            issues.append(intro+f'Has marcado {len(pts)-2} puntos intermedios y este recorrido necesita {len(target)-2}. Coloca un punto en cada superficie, en este orden: {route}. Una lente tiene dos caras; si el rayo vuelve tras un espejo, hay que marcar también las caras del regreso. El origen y el extremo final se cuentan aparte. No añadas puntos intermedios en tramos rectos.')
+            model_hint = ('Cada lente delgada tiene un único plano de interacción; cuenta también los pasos de regreso tras un espejo.' if exercise.get('thin_lens') else 'Una lente tiene dos caras; si el rayo vuelve tras un espejo, hay que marcar también las caras del regreso.')
+            issues.append(intro+f'Has marcado {len(pts)-2} puntos intermedios y este recorrido necesita {len(target)-2}. Coloca un punto en cada superficie, en este orden: {route}. {model_hint} El origen y el extremo final se cuentan aparte. No añadas puntos intermedios en tramos rectos.')
             continue
         initial_error = angle_error(pts[1]-pts[0], target[1]-target[0])
         if initial_error > ANGLE_TOL:
@@ -210,7 +250,7 @@ def assess_exercise(exercise, scene):
         count_before = len(issues)
         for i, surface in enumerate(expected['surfaces'], 1):
             if np.linalg.norm(pts[i]-target[i]) > POINT_TOL:
-                issues.append(intro+f'En la interacción {i}, con {surface}, has marcado ({pts[i][0]:.2f}, {pts[i][1]:.2f}) mm. El rayo debe alcanzar esa superficie cerca de x = {target[i,0]:.2f} mm, y = {target[i,1]:.2f} mm. Sitúa el cambio de dirección sobre la curva, usando «Ajustar a la superficie». Se admite una distancia de {POINT_TOL:g} mm al punto esperado. Corrige este encuentro antes de continuar con el resto del recorrido.')
+                issues.append(intro+f'En la interacción {i}, con {surface}, has marcado ({pts[i][0]:.2f}, {pts[i][1]:.2f}) mm. El rayo debe alcanzar esa superficie cerca de x = {target[i,0]:.2f} mm, y = {target[i,1]:.2f} mm. Sitúa el cambio de dirección sobre el elemento, usando «Ajustar a la superficie». Se admite una distancia de {POINT_TOL:g} mm al punto esperado. Corrige este encuentro antes de continuar con el resto del recorrido.')
                 break
             outgoing = pts[i+1]-pts[i]
             direction = np.asarray(expected['directions'][i-1])
@@ -219,6 +259,8 @@ def assess_exercise(exercise, scene):
                 mirror = any(e['kind'].startswith('Espejo') for e in exercise['elements'] if surface.startswith(e['name']+' ·') or surface == e['name'])
                 law = ('En la reflexión, el rayo vuelve al medio del que venía y el ángulo de salida debe ser igual al de entrada, ambos medidos respecto de la normal.' if mirror else
                        'Aplica la ley de Snell, n₁·sen(i) = n₂·sen(r). La normal es la recta perpendicular a la superficie en ese punto; en una cara esférica apunta al centro de curvatura. Al pasar a un índice mayor el rayo se acerca a la normal, y al pasar a uno menor se aleja.')
+                if exercise.get('thin_lens'):
+                    law = ('Usa la reflexión paraxial en el plano del espejo, con focal f = R/2 para el cóncavo y f = −R/2 para el convexo.' if mirror else 'Usa la ley de lente delgada: θ_salida = θ_entrada − y/f, con ángulos pequeños respecto del sentido de propagación. El cambio de dirección ocurre en el plano de la lente.')
                 issues.append(intro+f'El segmento que sale de {surface}, después de la interacción {i}, tiene una dirección incorrecta. '+law+f' Tu segmento forma {heading(outgoing):.2f}° respecto de +x y debería formar aproximadamente {heading(direction):.2f}°. La diferencia es {error:.2f}° y se admiten {ANGLE_TOL:g}°. Conserva el punto de esta interacción y corrige el siguiente punto para orientar el segmento. Estos ángulos usan las distancias físicas: no los midas directamente en pantalla, porque la escala vertical está ampliada.')
                 break
         if len(issues) == count_before and np.linalg.norm(pts[-1]-pts[-2]) < 10:

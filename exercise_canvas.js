@@ -33,7 +33,7 @@ export default function(component) {
   const options=[['place:object','Colocar objeto O'],...ex.elements.slice(1).map(e=>['place:'+e.name,'Colocar '+e.name+' · '+e.kind]),...ex.rays.map(r=>['ray:'+r.id,r.label]),
     ['auxiliary','Dibujar rayo auxiliar (continuo)'],
     ...ex.rays.map(r=>['extend:'+r.id,'Prolongación virtual · '+r.label]),
-    ['mark:image','Marcar imagen virtual O′'],['mark:focus','Marcar foco virtual F′']];
+    ['mark:image','Marcar imagen virtual O′'],['mark:frontFocus','Marcar foco F'],['mark:focus','Marcar foco virtual F′']];
   function refreshTools(){
     const entries=[...options,...scene.auxiliary.map((r,i)=>['extend:'+r.id,'Prolongación virtual · auxiliar '+(i+1)])];
     tool.replaceChildren(...entries.map(([value,label])=>{const o=document.createElement('option');o.value=value;o.textContent=label;return o;}));
@@ -56,7 +56,7 @@ export default function(component) {
   function save(){scene.zoom=zoom;setStateValue('value',structuredClone(scene));}
   function snap(p) {
     if(scene.tool.startsWith('extend:')) return extensionPoint(p)||p;
-    if(scene.tool==='mark:focus')return [p[0],0];
+    if(scene.tool==='mark:focus'||scene.tool==='mark:frontFocus')return [p[0],0];
     if(scene.tool.startsWith('mark:'))return p;
     if(scene.tool.startsWith('place:')) return [Math.round(p[0]),0];
     let result=p, best=10;
@@ -106,7 +106,7 @@ export default function(component) {
     }
     for(const [id,p] of Object.entries(scene.virtualPoints)){
       path([[p[0],b.ymin],[p[0],b.ymax]],'#64748b',true,1);
-      dot(p,'#334155',4);text({image:'O′ virtual',focus:'F′ virtual'}[id],p);
+      dot(p,'#334155',4);text({image:'O′ virtual',frontFocus:'F',focus:'F′ virtual'}[id],p);
     }
     if(scene.draft.length){const i=ex.rays.findIndex(r=>'ray:'+r.id===scene.tool);const color=colors[Math.max(0,i)%3];path(scene.draft,color);for(const p of scene.draft)dot(p,color);if(cursor)path([scene.draft.at(-1),cursor],color,true);}
     if(cursor){dot(cursor,'#111827',3);if(scene.tool.startsWith('place:'))path([[cursor[0],b.ymin],[cursor[0],b.ymax]],'#94a3b8',true,1);}

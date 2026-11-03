@@ -129,9 +129,23 @@ def geometry(elements, diameter, wavelength):
     return boundaries
 
 
-def physical_paraxial(elements, diameter, wavelength, object_x):
+def physical_paraxial(elements, diameter, wavelength, object_x, thin_lens=False):
     """Gaussian reference along the axial itinerary, including return through lenses."""
     forward = build(elements, diameter, wavelength)
+    if thin_lens:
+        # Collapse both refractions into one ideal plane, without glass translation.
+        collapsed = [forward[0]]
+        i = 1
+        for e in sorted(elements, key=lambda e: e.position):
+            if e.lens:
+                collapsed.append(Surface(e.position, e.aperture,
+                    forward[i+1].matrix @ forward[i].matrix,
+                    e.name+' · lente delgada', 1.))
+                i += 2
+            else:
+                collapsed.append(forward[i])
+                i += 1
+        forward = collapsed
     mirror = next((e for e in sorted(elements, key=lambda e: e.position) if e.kind.startswith('Espejo')), None)
     if mirror is None:
         path = forward
