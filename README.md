@@ -74,3 +74,5 @@ El objeto del banco puede situarse por encima o por debajo del eje, o centrado s
 En el taller, «Aproximación de lente delgada» está activada por defecto: cada lente se representa en un solo plano, con potencia (n−1)(1/R₁−1/R₂), y los espejos se tratan paraxialmente en su vértice. Al desactivarla se recuperan las dos caras, el espesor y Snell/reflexión exactos. Cambiar el modelo reinicia el dibujo; el enunciado, las focales y la corrección usan siempre el modelo activo.
 
 Referencia del modelo de lente delgada: [OpenStax, Thin Lenses](https://openstax.org/books/university-physics-volume-3/pages/2-4-thin-lenses).
+
+Convenio para lentes en aire: la matriz usa la focal imagen f′, con θ_salida = θ_entrada − y/f′. Si f = HF es la focal objeto cartesiana, f = −f′ y la expresión equivalente es θ_salida = θ_entrada + y/f. Las focales de espejos se expresan en el recorrido reflejado, sin identificar su signo con una distancia cartesiana sobre el eje global.

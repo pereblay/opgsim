@@ -75,11 +75,14 @@ def render_exercise_portal():
         radius=lambda r: '—' if r is None else ('∞' if math.isinf(r) else f'{r:+g}')
         focal=physical_paraxial([e],100,550,ex['object_x'], thin_lens=ex['thin_lens'])['focal']
         focal_text = '∞' if focal is None else f'{focal:+.3f}'
-        st.markdown(f'**{e.name} · {e.kind} — Distancia focal f = {focal_text} mm**')
-        properties.append({'Elemento':e.name,'Tipo':e.kind,'Distancia focal f (mm)':focal_text,'Posición (mm)':e.position,'Altura / diámetro (mm)':e.aperture,'Grosor del modelo (mm)':0. if ex['thin_lens'] and e.lens else e.thickness,'n':f'{e.index:g}' if e.lens else '—','R₁ (mm)':radius(r1),'R₂ (mm)':radius(r2)})
+        focal_symbol = 'f′' if e.lens else 'f_eff'
+        st.markdown(f'**{e.name} · {e.kind} — Distancia focal {focal_symbol} = {focal_text} mm**')
+        properties.append({'Elemento':e.name,'Tipo':e.kind,'Focal efectiva (mm)':focal_text,'Posición (mm)':e.position,'Altura / diámetro (mm)':e.aperture,'Grosor del modelo (mm)':0. if ex['thin_lens'] and e.lens else e.thickness,'n':f'{e.index:g}' if e.lens else '—','R₁ (mm)':radius(r1),'R₂ (mm)':radius(r2)})
     st.dataframe(properties, hide_index=True, width='stretch')
     st.caption('Radios cartesianos: centro de curvatura a la derecha, R positivo; cara plana, R=∞. Aire exterior n=1; luz de 550 nm. No hay diafragmas. Un espejo, si aparece, es el último elemento y refleja toda la luz.')
     st.write('Los tres rayos salen del mismo extremo O: chief al centro del stop, paralelo al eje y focal dirigido hacia F. Las focales de la tabla son distancias de cada elemento aislado, no sus coordenadas ni la focal del conjunto.')
+    if ex['thin_lens']:
+        st.caption('Lentes en aire: θ_salida = θ_entrada − y/f′. La focal imagen f′ es positiva en convergentes y negativa en divergentes. Con distancias cartesianas, f = HF = −f′. En un retorno se usa el eje local orientado en el sentido de propagación. Para espejos, la tabla da la focal efectiva del recorrido reflejado, positiva en cóncavos.')
     st.write('Traza estos rayos: '+ '; '.join(r['label'] for r in ex['rays'])+'.')
     with st.expander('Cómo resolver el ejercicio'):
         st.markdown('''1. Selecciona «Colocar objeto O» y haz clic en su posición sobre el eje. La altura está fijada por el enunciado.
