@@ -51,6 +51,54 @@ class ExerciseTests(unittest.TestCase):
                 for shape in public_exercise(ex)['shapes']:
                     self.assertTrue(all(p[0] == 0. for p in shape))
 
+    def test_parallel_ray_positive_image_focal_160_requires_negative_angle(self):
+        from dataclasses import asdict
+        from optics import Element
+        from exercises import reference_rays
+        import math
+        lens = Element(name='E1', kind='Biconvexa', position=0., aperture=40.,
+                       thickness=6., index=1.5, r1=160., r2=-160.)
+        rays, result = reference_rays([lens], -120., 5., -220., 300.,
+                                      mode='parallel_focal', thin_lens=True)
+        self.assertAlmostEqual(result['focal'], 160.)
+        self.assertAlmostEqual(result['front_focus'], -160.)
+        direction = rays[1]['directions'][0]
+        self.assertAlmostEqual(math.degrees(math.atan2(direction[1], direction[0])),
+                               -1.7899106082460694)
+        ex = dict(elements=[asdict(lens)], object_x=-120., object_height=5.,
+                  thin_lens=True, rays=rays)
+        scene = solved(ex)
+        self.assertTrue(assess_exercise(ex, scene)['correct'])
+        scene['rays'][1]['points'][-1] = [300., 5.+300.*5./160.]
+        report = assess_exercise(ex, scene)
+        self.assertFalse(report['correct'])
+        self.assertTrue(any('debería formar aproximadamente -1.79°' in m
+                            for m in report['issues']))
+
+    def test_biconcave_parallel_ray_negative_image_focal_requires_positive_angle(self):
+        from dataclasses import asdict
+        from optics import Element
+        from exercises import reference_rays
+        import math
+        lens = Element(name='E1', kind='Bicóncava', position=0., aperture=40.,
+                       thickness=6., index=1.5, r1=-160., r2=160.)
+        rays, result = reference_rays([lens], -120., 5., -220., 300.,
+                                      mode='parallel_focal', thin_lens=True)
+        self.assertAlmostEqual(result['focal'], -160.)
+        self.assertAlmostEqual(result['front_focus'], 160.)
+        direction = rays[1]['directions'][0]
+        self.assertAlmostEqual(math.degrees(math.atan2(direction[1], direction[0])),
+                               1.7899106082460694)
+        ex = dict(elements=[asdict(lens)], object_x=-120., object_height=5.,
+                  thin_lens=True, rays=rays)
+        scene = solved(ex)
+        self.assertTrue(assess_exercise(ex, scene)['correct'])
+        scene['rays'][1]['points'][-1] = [300., 5.-300.*5./160.]
+        report = assess_exercise(ex, scene)
+        self.assertFalse(report['correct'])
+        self.assertTrue(any('debería formar aproximadamente 1.79°' in m
+                            for m in report['issues']))
+
     def test_wrong_placement_and_missing_rays(self):
         ex=generate_exercise(1,123)
         self.assertFalse(assess_exercise(ex,{})['correct'])

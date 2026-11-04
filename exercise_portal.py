@@ -75,9 +75,12 @@ def render_exercise_portal():
         radius=lambda r: '—' if r is None else ('∞' if math.isinf(r) else f'{r:+g}')
         focal=physical_paraxial([e],100,550,ex['object_x'], thin_lens=ex['thin_lens'])['focal']
         focal_text = '∞' if focal is None else f'{focal:+.3f}'
-        focal_symbol = 'f′' if e.lens else 'f_eff'
-        st.markdown(f'**{e.name} · {e.kind} — Distancia focal {focal_symbol} = {focal_text} mm**')
-        properties.append({'Elemento':e.name,'Tipo':e.kind,'Focal efectiva (mm)':focal_text,'Posición (mm)':e.position,'Altura / diámetro (mm)':e.aperture,'Grosor del modelo (mm)':0. if ex['thin_lens'] and e.lens else e.thickness,'n':f'{e.index:g}' if e.lens else '—','R₁ (mm)':radius(r1),'R₂ (mm)':radius(r2)})
+        object_focal_text = '∞' if focal is None else f'{-focal:+.3f}'
+        if e.lens:
+            st.markdown(f'**{e.name} · {e.kind} — Focal objeto f = {object_focal_text} mm · Focal imagen f′ = {focal_text} mm**')
+        else:
+            st.markdown(f'**{e.name} · {e.kind} — Distancia focal efectiva f_eff = {focal_text} mm**')
+        properties.append({'Elemento':e.name,'Tipo':e.kind,'Focal objeto f (mm)':object_focal_text if e.lens else '—','f′ (mm)':focal_text if e.lens else '—','Focal espejo f_eff (mm)':focal_text if not e.lens else '—','Posición (mm)':e.position,'Altura / diámetro (mm)':e.aperture,'Grosor del modelo (mm)':0. if ex['thin_lens'] and e.lens else e.thickness,'n':f'{e.index:g}' if e.lens else '—','R₁ (mm)':radius(r1),'R₂ (mm)':radius(r2)})
     st.dataframe(properties, hide_index=True, width='stretch')
     st.caption('Radios cartesianos: centro de curvatura a la derecha, R positivo; cara plana, R=∞. Aire exterior n=1; luz de 550 nm. No hay diafragmas. Un espejo, si aparece, es el último elemento y refleja toda la luz.')
     st.write('Los tres rayos salen del mismo extremo O: chief al centro del stop, paralelo al eje y focal dirigido hacia F. Las focales de la tabla son distancias de cada elemento aislado, no sus coordenadas ni la focal del conjunto.')
