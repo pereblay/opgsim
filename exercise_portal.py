@@ -74,7 +74,9 @@ def render_exercise_portal():
         r1,r2=e.radii() if e.lens else (math.inf if e.kind=='Espejo plano' else (-abs(e.r1) if e.kind=='Espejo cóncavo' else abs(e.r1)), None)
         radius=lambda r: '—' if r is None else ('∞' if math.isinf(r) else f'{r:+g}')
         focal=physical_paraxial([e],100,550,ex['object_x'], thin_lens=ex['thin_lens'])['focal']
-        properties.append({'Focal efectiva (mm)': '∞' if focal is None else f'{focal:.3f}', 'Elemento':e.name,'Tipo':e.kind,'Posición (mm)':e.position,'Altura / diámetro (mm)':e.aperture,'Grosor del modelo (mm)':0. if ex['thin_lens'] and e.lens else e.thickness,'n':f'{e.index:g}' if e.lens else '—','R₁ (mm)':radius(r1),'R₂ (mm)':radius(r2)})
+        focal_text = '∞' if focal is None else f'{focal:+.3f}'
+        st.markdown(f'**{e.name} · {e.kind} — Distancia focal f = {focal_text} mm**')
+        properties.append({'Elemento':e.name,'Tipo':e.kind,'Distancia focal f (mm)':focal_text,'Posición (mm)':e.position,'Altura / diámetro (mm)':e.aperture,'Grosor del modelo (mm)':0. if ex['thin_lens'] and e.lens else e.thickness,'n':f'{e.index:g}' if e.lens else '—','R₁ (mm)':radius(r1),'R₂ (mm)':radius(r2)})
     st.dataframe(properties, hide_index=True, width='stretch')
     st.caption('Radios cartesianos: centro de curvatura a la derecha, R positivo; cara plana, R=∞. Aire exterior n=1; luz de 550 nm. No hay diafragmas. Un espejo, si aparece, es el último elemento y refleja toda la luz.')
     st.write('Los tres rayos salen del mismo extremo O: chief al centro del stop, paralelo al eje y focal dirigido hacia F. Las focales de la tabla son distancias de cada elemento aislado, no sus coordenadas ni la focal del conjunto.')
@@ -93,6 +95,8 @@ def render_exercise_portal():
 **Teclado:** enfoca el canvas; las flechas desplazan el cursor, Intro coloca un punto, Mayús+Intro termina, Retroceso deshace y Escape cancela el rayo actual.''')
     st.caption(f'Tolerancias de revisión: posiciones e interacciones ±{ex["point_tolerance"]:g} mm; direcciones ±{ex["angle_tolerance"]:g}°. Las lentes conservan su diámetro útil: un rayo no puede atravesar una zona sin vidrio.')
     st.subheader('2 · Tu trazado')
+    if ex['thin_lens']:
+        st.caption('Lentes delgadas: símbolos hacia fuera (↑ arriba, ↓ abajo) para convergentes; hacia dentro para divergentes. Una lente de potencia nula se muestra sin símbolos.')
     st.caption('El primer elemento está fijado en x=0; el canvas no muestra focos ni rayos de solución. La cuadrícula y el eje sirven para colocar tu propio dibujo; las correcciones aparecen debajo.')
     key='exercise_canvas_'+ex['id']
     previous=st.session_state.get(key, {})

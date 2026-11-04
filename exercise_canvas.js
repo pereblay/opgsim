@@ -92,6 +92,18 @@ export default function(component) {
       const shape=ex.shapes[i].map(p=>[p[0]+position[0],p[1]]);
       if(!e.kind.startsWith('Espejo')){ctx.beginPath();shape.forEach((p,j)=>j?ctx.lineTo(sx(p[0]),sy(p[1])):ctx.moveTo(sx(p[0]),sy(p[1])));ctx.fillStyle='#dff2fb';ctx.fill();}
       path(shape,e.kind.startsWith('Espejo')?'#475569':'#0284c7',false,2.5);text(e.name,[position[0],e.aperture/2+1]);
+      const power=ex.lens_powers?.[i];
+      if(ex.thin_lens && power!=null && Math.abs(power)>1e-12){
+        // Screen-sized chevrons: outward for positive power, inward for negative.
+        // Decoration only; the interaction/snap geometry remains the lens plane.
+        ctx.save();ctx.strokeStyle='#0284c7';ctx.lineWidth=2.5;ctx.setLineDash([]);
+        for(const end of [-1,1]){
+          const x=sx(position[0]),y=sy(end*e.aperture/2);
+          const wingOffset=end*Math.sign(power)*7;
+          ctx.beginPath();ctx.moveTo(x-6,y+wingOffset);ctx.lineTo(x,y);ctx.lineTo(x+6,y+wingOffset);ctx.stroke();
+        }
+        ctx.restore();
+      }
     }
     if(scene.placements.object){const x=scene.placements.object[0];path([[x,0],[x,ex.object_height]],'#18263c',false,4);dot([x,ex.object_height],'#18263c',4);text('O',[x,ex.object_height]);}
     for(const ray of allRays()){const i=ex.rays.findIndex(r=>r.id===ray.id);path(ray.points,colors[Math.max(0,i)%3]);for(const p of ray.points)dot(p,colors[Math.max(0,i)%3],2.5);}

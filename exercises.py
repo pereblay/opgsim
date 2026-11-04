@@ -159,8 +159,14 @@ def public_exercise(exercise):
     result = {k: v for k, v in exercise.items() if k not in ('rays', 'stop', 'front_focus', 'principal')}
     result['rays'] = [dict(id=r['id'], label=r['label']) for r in exercise['rays']]
     result['shapes'] = []
+    result['lens_powers'] = []
     for row in exercise['elements']:
         e = Element(**row)
+        if e.lens:
+            r1, r2 = e.radii()
+            result['lens_powers'].append((e.n(550)-1)*(1/r1-1/r2))
+        else:
+            result['lens_powers'].append(None)
         ys = np.linspace(-e.aperture/2, e.aperture/2, 151)
         if exercise.get('thin_lens'):
             points = [[0., -e.aperture/2], [0., e.aperture/2]]
