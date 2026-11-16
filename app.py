@@ -365,9 +365,18 @@ st.info(f'{as_label}: **{stop_name}** (x = {as_x+origin:g} mm, Ø {as_plane.aper
 if not auto_as and result['limiting_stop'] != result['stop']:
     st.caption(f"La abertura limitante calculada para el haz axial es {surfaces[result['limiting_stop']].name}. PE y PS se calculan con el AS fijado.")
 st.caption('PE: imagen del AS vista desde el objeto a través de la óptica anterior. PS: imagen del mismo AS vista desde la salida a través de la óptica posterior. Sin elementos ópticos en un lado, su pupila coincide con el AS. Con espejos, anterior y posterior siguen el recorrido de la luz.')
+def pupil_offset(x):
+    if x is None:
+        return '∞ / no finito'
+    delta = round(x-as_x, 3)
+    return f'{delta:+.3f} mm' if delta else '0.000 mm'
+
+st.caption('Δx = x de la pupila − x del AS: negativo hacia la izquierda y positivo hacia la derecha. El signo indica dónde está la imagen, no qué elementos la forman.')
 rows = [
+    ('PE · Δx respecto al AS', pupil_offset(result['entrance_x'])),
     ('Pupila de entrada · x en el banco', fmt(None if result['entrance_x'] is None else result['entrance_x']+origin)),
     ('Pupila de entrada · diámetro', fmt(result['entrance_diameter'])),
+    ('PS · Δx respecto al AS', pupil_offset(result['exit_x'])),
     ('Pupila de salida · x en el banco', fmt(None if result['exit_x'] is None else result['exit_x']+origin)),
     ('Pupila de salida · diámetro', fmt(result['exit_diameter'])),
     ('Foco anterior · posición¹', fmt(result['front_focus'])),

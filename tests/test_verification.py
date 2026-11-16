@@ -50,7 +50,7 @@ class VerificationTests(unittest.TestCase):
     def test_two_sided_pupil_images(self):
         # AS at 60; object distances for imaging it are 60 mm on the left
         # and 30 mm on the right. Each side obeys its own thin-lens equation.
-        for f_left, f_right in [(30., 20.), (40., 10.), (60., 30.)]:
+        for f_left, f_right in [(30., 20.), (40., 10.), (120., 60.), (60., 30.)]:
             def lens(x, f):
                 return Surface(x, 100., np.array([[1., 0.], [-1/f, 1.]]), 'Lens', 1.)
             path = [lens(0., f_left), Surface(60., 2., np.eye(2), 'AS', 1.), lens(90., f_right)]
