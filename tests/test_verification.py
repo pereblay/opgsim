@@ -47,6 +47,25 @@ class VerificationTests(unittest.TestCase):
             self.assertAlmostEqual(result['exit_x'], stop_x)
             self.assertAlmostEqual(result['exit_diameter'], 2)
 
+    def test_two_sided_pupil_images(self):
+        # AS at 60; object distances for imaging it are 60 mm on the left
+        # and 30 mm on the right. Each side obeys its own thin-lens equation.
+        for f_left, f_right in [(30., 20.), (40., 10.), (60., 30.)]:
+            def lens(x, f):
+                return Surface(x, 100., np.array([[1., 0.], [-1/f, 1.]]), 'Lens', 1.)
+            path = [lens(0., f_left), Surface(60., 2., np.eye(2), 'AS', 1.), lens(90., f_right)]
+            r = analyze(path, -100.)
+            self.assertEqual(r['stop'], 1)
+            for side, x, sign, d, f in [('entrance', 0., -1, 60., f_left),
+                                        ('exit', 90., 1, 30., f_right)]:
+                if d == f:
+                    self.assertIsNone(r[side+'_x'])
+                    self.assertIsNone(r[side+'_diameter'])
+                else:
+                    image = f*d/(d-f)
+                    self.assertAlmostEqual(r[side+'_x'], x+sign*image)
+                    self.assertAlmostEqual(r[side+'_diameter'], 2*abs(image/d))
+
     def test_sixty_systems_exact_linearization_matches_gaussian_matrix(self):
         rng = np.random.default_rng(712)
         kinds = ['Biconvexa', 'Bicóncava', 'Menisco', 'Plano-convexa', 'Convexa-plana']

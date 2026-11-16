@@ -55,7 +55,7 @@ with st.sidebar:
     placement = st.radio('Situación del objeto', ['Por encima del eje', 'Por debajo del eje', 'Centrado simétricamente'], disabled=not finite_source)
     diameter = st.number_input('Diámetro de abertura inicial (mm)', min_value=0.01, value=25., step=1.)
     wavelength = st.slider('Longitud de onda (nm)', 380, 780, 550)
-    st.caption('La abertura inicial es física. Solo coincide con la pupila de entrada si es la abertura limitante del sistema.')
+    st.caption('El diafragma móvil es una abertura física. El AS es la abertura que limita el haz del objeto axial; también puede ser la montura de una lente.')
     st.header('Trazado')
     tracing_mode = st.selectbox('Modelo de rayos', ['Paraxial · aproximación matricial', 'Exacto · Snell y reflexión'], index=1)
     exact = tracing_mode.startswith('Exacto')
@@ -301,10 +301,15 @@ for group, h in enumerate(sorted(set([bottom, 0., top])) if finite_source else [
                     if ray['blocked'] is None and abs(d[0]) > EPS and (ix-q[0])/d[0] < 0:
                         fig.add_trace(go.Scatter(x=[q[0]+origin, ix+origin], y=[q[1], q[1]+(ix-q[0])*d[1]/d[0]], mode='lines', line=dict(color=colors[group], dash='dash', width=1), opacity=.4, legendgroup=f'O′ · haz y={h:g}', showlegend=False))
 
-for key, label, color in [('entrance_x', 'Pupila entrada', '#16a34a'), ('exit_x', 'Pupila salida', '#d97706'), ('image_x', 'Imagen paraxial', '#e11d48')]:
+as_plane = surfaces[result['stop']]
+as_x = as_plane.x
+if result['mirror_x'] is not None and as_x > result['mirror_x']:
+    as_x = 2*result['mirror_x']-as_x
+fig.add_annotation(x=as_x+origin, y=-as_plane.aperture/2, text='AS', showarrow=False, yshift=-12)
+for key, label, color in [('entrance_x', 'PE', '#16a34a'), ('exit_x', 'PS', '#d97706'), ('image_x', 'Imagen paraxial', '#e11d48')]:
     x = result[key]
     if x is not None:
-        fig.add_vline(x=x+origin, line_dash='dash', line_color=color, annotation_text=('Plano imagen O′G' if exact else 'Plano imagen O′') if key == 'image_x' else label)
+        fig.add_vline(x=x+origin, line_dash='dash', line_color=color, annotation_position=('bottom left' if key == 'exit_x' else 'top right'), annotation_text=('Plano imagen O′G' if exact else 'Plano imagen O′') if key == 'image_x' else label)
 if result['image_x'] is not None:
     m = result['magnification'] if finite_source else 0.
     fig.add_trace(go.Scatter(x=[result['image_x']+origin]*2, y=[bottom*m, top*m], mode='lines+markers', line=dict(color='#e11d48', width=4, dash='dash'), name='O′G · Imagen gaussiana' if exact else 'O′ · Imagen gaussiana'))
@@ -336,11 +341,12 @@ c3.metric('Aumento transversal', fmt(result['magnification'], ' ×') if finite_s
 c4.metric('Altura de imagen', fmt(None if result['image_x'] is None else (abs(result['magnification'])*height if finite_source else 0.)))
 st.caption('O: objeto. Imagen y focos gaussianos: sufijo G en modo exacto. O′: cruce o plano de mínima dispersión del haz mostrado; F′: mínimo del haz paralelo. El subíndice i identifica un elemento aislado.')
 stop_name = surfaces[result['stop']].name
-st.info(f'Abertura limitante para el objeto axial: **{stop_name}**. '+('Sistema afocal (C ≈ 0).' if result['focal'] is None else ''))
+st.info(f'Abertura limitante para el objeto axial: **{stop_name}** (AS, x = {as_x+origin:g} mm, Ø {as_plane.aperture:g} mm). '+('Sistema afocal (C ≈ 0).' if result['focal'] is None else ''))
+st.caption('PE: imagen del AS vista desde el objeto a través de la óptica anterior. PS: imagen del mismo AS vista desde la salida a través de la óptica posterior. Sin elementos ópticos en un lado, su pupila coincide con el AS. Con espejos, anterior y posterior siguen el recorrido de la luz.')
 rows = [
-    ('Pupila de entrada · posición¹', fmt(result['entrance_x'])),
+    ('Pupila de entrada · x en el banco', fmt(None if result['entrance_x'] is None else result['entrance_x']+origin)),
     ('Pupila de entrada · diámetro', fmt(result['entrance_diameter'])),
-    ('Pupila de salida · posición¹', fmt(result['exit_x'])),
+    ('Pupila de salida · x en el banco', fmt(None if result['exit_x'] is None else result['exit_x']+origin)),
     ('Pupila de salida · diámetro', fmt(result['exit_diameter'])),
     ('Foco anterior · posición¹', fmt(result['front_focus'])),
     ('BFL desde la última superficie óptica', fmt(result['back_focus_vertex'])),

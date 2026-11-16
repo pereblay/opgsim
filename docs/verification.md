@@ -112,3 +112,14 @@ La comparación de 60 sistemas usa diferencias centrales con alturas ±10⁻⁴ 
 - La matriz sigue el itinerario axial hasta el primer espejo y su retorno. Una trayectoria exacta con reflexiones internas totales adicionales no tiene necesariamente ese itinerario: sus resultados cardinales no describen esa rama.
 - Las líneas físicas son continuas; las prolongaciones virtuales, discontinuas. El plano y la representación de O′ son discontinuos por la convención gráfica solicitada, incluso si la imagen es real; ello no significa que la luz real viaje en líneas discontinuas.
 - La mejora de la sagita no elimina toda pérdida de precisión en intersecciones esfera–rayo para radios extremos. Las tolerancias absolutas de geometría están expresadas en mm; no se ha certificado el comportamiento para escalas arbitrarias.
+
+### Pupilas de un sistema con óptica a ambos lados del AS
+
+Para verificar PE y PS por separado, se usan lentes delgadas en x = 0 y
+90 mm (focales de 30 y 20 mm) y un AS de diámetro 2 mm en x = 60 mm.
+Mirando el AS a través de la lente izquierda, la distancia objeto es 60 mm:
+la ecuación de la lente da una imagen a 60 mm hacia la izquierda, por tanto
+PE en x = −60 mm, Ø 2 mm. Para la lente derecha la distancia objeto es 30 mm:
+la imagen cae 60 mm hacia la derecha, por tanto PS en x = 150 mm, Ø 4 mm.
+El ensayo también coloca el AS en el plano focal de ambas lentes; en ese
+caso ambas pupilas están en el infinito y no tienen diámetro lineal finito.

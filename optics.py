@@ -120,9 +120,9 @@ def build(elements, diameter, wavelength, aperture_x=0.):
     return sorted(surfaces, key=lambda s: s.x)
 
 
-def matrices(surfaces):
+def matrices(surfaces, start_x=0., start_n=1.):
     pre, post = [], []
-    m, x, n = np.eye(2), 0., 1.
+    m, x, n = np.eye(2), start_x, start_n
     for s in surfaces:
         m = translation(s.x-x, n) @ m
         pre.append(m.copy())
@@ -187,8 +187,11 @@ def analyze(surfaces, object_x):
     stop = int(np.argmin(limits))
     # Entrance pupil = backward image of stop through preceding optics.
     entrance_x, entrance_mag = conjugate(np.linalg.inv(pre[stop]), 0.)
-    downstream = m @ np.linalg.inv(pre[stop])
-    exit_x, exit_mag = conjugate(downstream, surfaces[-1].x)
+    # Image the stop plane through only the interfaces encountered afterwards.
+    # A refraction exactly in the stop plane cannot move its points.
+    as_plane = surfaces[stop]
+    _, suffix = matrices(surfaces[stop+1:], as_plane.x, as_plane.n_after)
+    exit_x, exit_mag = conjugate(suffix[-1] if suffix else np.eye(2), surfaces[-1].x)
     c = m[1, 0]
     focal = None if abs(c) < EPS else float(-1/c)
     return dict(matrix=m, pre=pre, post=post, image_x=image_x, magnification=magnification,
