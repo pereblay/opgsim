@@ -56,6 +56,27 @@ class AppTests(unittest.TestCase):
         self.assertNotEqual(app.session_state['exercise']['id'], first_id)
         self.assertEqual(app.session_state['exercise_scene']['rays'], [])
 
+    def test_signed_bank_positions_survive_edit_and_add(self):
+        app = AppTest.from_file(APP, default_timeout=30).run()
+        for x in (-30., 25.):
+            app.session_state['editor_0'] = {
+                'edited_rows': {0: {'position': x}}, 'added_rows': [], 'deleted_rows': []}
+            app.run()
+            self.assertEqual(app.session_state['elements'][0]['position'], x)
+            self.assertFalse(app.error)
+        next(w for w in app.number_input if w.label == 'Posición x en el banco (mm)').set_value(-45.)
+        next(b for b in app.button if b.label == 'Añadir elemento').click().run()
+        for mode in ['Paraxial · aproximación matricial', 'Exacto · Snell y reflexión']:
+            next(w for w in app.selectbox if w.label == 'Modelo de rayos').select(mode).run()
+            rows = app.session_state['elements']
+            self.assertEqual([row['position'] for row in rows], [25., -45.])
+            self.assertFalse(app.exception)
+            self.assertFalse(app.error)
+            plot = json.loads(app.get('plotly_chart')[0].proto.spec)
+            labels = {a['text']: a['x'] for a in plot['layout']['annotations']}
+            for row in rows:
+                self.assertEqual(labels[row['name']], row['position'])
+
     def test_add_remove_preserves_configuration(self):
         app = AppTest.from_file(APP, default_timeout=30).run()
         next(b for b in app.button if b.label == 'Añadir elemento').click().run()

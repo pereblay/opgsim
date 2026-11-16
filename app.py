@@ -35,24 +35,22 @@ if st.button('Abrir portal de ejercicios', key='open_exercises', type='primary')
     st.rerun()
 st.caption('OPGSim · Trazado paraxial o exacto · Parámetros gaussianos · Distancias en mm · Sistema centrado en aire')
 
+def preset_rows(name):
+    rows = [asdict(e) for e in PRESETS[name]]
+    first = min((r['position'] for r in rows), default=0.)
+    return [dict(r, position=r['position']-first) for r in rows]
+
+
 if 'elements' not in st.session_state:
-    st.session_state.elements = [asdict(e) for e in PRESETS['Lente convergente']]
+    st.session_state.elements = preset_rows('Lente convergente')
     st.session_state.version = 0
-
-def anchored_rows(rows):
-    rows = sorted((dict(row) for row in rows), key=lambda row: row['position'])
-    shift = rows[0]['position'] if rows else 0.
-    return [dict(row, position=row['position']-shift) for row in rows]
-
-st.session_state.elements = anchored_rows(st.session_state.elements)
 
 with st.sidebar:
     st.header('Objeto y abertura inicial')
-    origin = 0.
-    st.caption('El primer elemento fija el origen x=0 mm. Las distancias se miden desde su primera cara.')
+    aperture_position = st.number_input('Posición x del diafragma de apertura (mm)', value=0., step=5., key='aperture_position')
     source_mode = st.radio('Origen de los rayos', ['Objeto finito', 'Paralelos desde infinito', 'Desde el foco F'])
     finite_source = source_mode == 'Objeto finito'
-    obj = st.number_input('Distancia del objeto a la referencia (mm)', max_value=-0.01, value=-120., step=10., disabled=not finite_source)
+    obj = st.number_input('Posición x del objeto en el banco (mm)', value=-120., step=10., disabled=not finite_source)
     height = st.number_input('Altura total del objeto (mm)', min_value=0., value=0., step=1., disabled=not finite_source)
     placement = st.radio('Situación del objeto', ['Por encima del eje', 'Por debajo del eje', 'Centrado simétricamente'], disabled=not finite_source)
     diameter = st.number_input('Diámetro de abertura inicial (mm)', min_value=0.01, value=25., step=1.)
@@ -70,16 +68,16 @@ with st.sidebar:
     st.header('Ejemplos')
     preset = st.selectbox('Configuración', list(PRESETS))
     if st.button('Cargar ejemplo', width="stretch"):
-        st.session_state.elements = [asdict(e) for e in PRESETS[preset]]
+        st.session_state.elements = preset_rows(preset)
         st.session_state.version += 1
         st.rerun()
 
 st.subheader('1 · Elementos del sistema')
-st.caption('El primer elemento se fija en x=0; al cambiar el origen se conservan las separaciones. Altura = diámetro útil, centrado en el eje.')
+st.caption('La posición x de cada elemento se edita de forma independiente y admite ambos signos. Altura = diámetro útil, centrado en el eje.')
 with st.form('add', clear_on_submit=False):
     c1, c2, c3 = st.columns([2, 2, 1], vertical_alignment='bottom')
     kind = c1.selectbox('Tipo de elemento', TYPES)
-    position = c2.number_input('Distancia a la referencia (mm)', min_value=0., value=80., step=10.)
+    position = c2.number_input('Posición x en el banco (mm)', value=80., step=10.)
     submitted = c3.form_submit_button('Añadir elemento', width="stretch")
     if submitted:
         st.session_state.elements.append(asdict(Element(name=f'E{len(st.session_state.elements)+1}', kind=kind, position=position)))
@@ -88,7 +86,7 @@ with st.form('add', clear_on_submit=False):
 columns = {
     'name': st.column_config.TextColumn('Nombre', required=True),
     'kind': st.column_config.SelectboxColumn('Tipo', options=TYPES, required=True, width='medium'),
-    'position': st.column_config.NumberColumn('Distancia (mm)', min_value=0., required=True),
+    'position': st.column_config.NumberColumn('Posición x (mm)', required=True),
     'aperture': st.column_config.NumberColumn('Altura / Ø (mm)', min_value=.01, required=True),
     'thickness': st.column_config.NumberColumn('Grosor (mm)', min_value=0., required=True),
     'index': st.column_config.NumberColumn('n a 550 nm', min_value=1., required=True, format='%.4f'),
@@ -98,11 +96,6 @@ columns = {
 }
 edited = st.data_editor(st.session_state.elements, column_config=columns, num_rows='fixed', hide_index=True, width="stretch", key=f'editor_{st.session_state.version}')
 # The current table is the source for subsequent additions and removals.
-normalized = anchored_rows(edited)
-if normalized != edited:
-    st.session_state.elements = normalized
-    st.session_state.version += 1
-    st.rerun()
 st.session_state.elements = edited
 if edited:
     c1, c2 = st.columns([4, 1], vertical_alignment='bottom')
@@ -123,25 +116,31 @@ with st.expander('Convenciones, índices y límites del modelo'):
 """)
 
 try:
-    elements = [Element(**row) for row in edited]
-    boundaries = geometry(elements, diameter, wavelength)
-    result = physical_paraxial(elements, diameter, wavelength, obj)
+    # Trace from the first physical plane, drawing in absolute bank coordinates.
+    origin = min([aperture_position] + [row['position'] for row in edited])
+    aperture_x = aperture_position-origin
+    obj -= origin
+    if finite_source and obj >= 0:
+        raise ValueError('Sitúa el objeto a la izquierda del primer elemento y del diafragma de apertura.')
+    elements = [Element(**dict(row, position=row['position']-origin)) for row in edited]
+    boundaries = geometry(elements, diameter, wavelength, aperture_x)
+    result = physical_paraxial(elements, diameter, wavelength, obj, aperture_x=aperture_x)
     if source_mode == 'Paralelos desde infinito':
-        result = physical_paraxial(elements, diameter, wavelength, None)
+        result = physical_paraxial(elements, diameter, wavelength, None, aperture_x=aperture_x)
     elif source_mode == 'Desde el foco F':
         if result['front_focus'] is None:
             st.info('El sistema es afocal: no hay un foco F finito. Selecciona rayos paralelos desde infinito o añade potencia óptica.')
             st.stop()
-        result = physical_paraxial(elements, diameter, wavelength, result['front_focus'])
+        result = physical_paraxial(elements, diameter, wavelength, result['front_focus'], aperture_x=aperture_x)
     surfaces = result['path']
     for element in elements:
         if element.clear_aperture < element.aperture-1e-8:
             st.info(f'{element.name}: altura útil corregida de {element.aperture:g} a {element.clear_aperture:.6g} mm por el cruce o el límite de sus superficies.')
-    foci = focal_points(elements, diameter, wavelength, obj)
+    foci = focal_points(elements, diameter, wavelength, obj, aperture_x)
     if exact:
         optical_elements = [e for e in sorted(elements, key=lambda e: e.position) if e.kind != 'Diafragma']
         for focus, subsystem in zip(foci, [[e] for e in optical_elements]+[elements]):
-            focus['exact_back'] = exact_back_focus(subsystem, diameter, wavelength, ray_count)
+            focus['exact_back'] = exact_back_focus(subsystem, diameter, wavelength, ray_count, aperture_x)
 except (ValueError, TypeError, KeyError, ZeroDivisionError) as error:
     st.error(f'Revisa la configuración: {error}')
     st.stop()
@@ -149,7 +148,7 @@ except (ValueError, TypeError, KeyError, ZeroDivisionError) as error:
 bottom, top = {'Por encima del eje': (0., height),
                'Por debajo del eje': (-height, 0.),
                'Centrado simétricamente': (-height/2, height/2)}[placement]
-end = max([0.]+[e.position+e.thickness if e.lens or e.kind == 'Diafragma' else e.position for e in elements]) + extension
+end = max([aperture_x]+[e.position+e.thickness if e.lens or e.kind == 'Diafragma' else e.position for e in elements]) + extension
 start_x = obj - extension*.25
 source_rays = None
 if not finite_source:
@@ -184,7 +183,7 @@ def base_figure():
         a = aperture/2
         for sign in [-1, 1]:
             fig.add_trace(go.Scatter(x=[x+origin]*2, y=[sign*a, sign*(a+max(diameter*.12, 2))], mode='lines', line=dict(color='#475569', width=6), name=name, showlegend=False, hovertemplate=name+'<extra></extra>'))
-    aperture(0, diameter, 'Abertura inicial')
+    aperture(aperture_x, diameter, 'Abertura inicial')
     for e in sorted(elements, key=lambda e: e.position):
         y = np.linspace(-e.clear_aperture/2, e.clear_aperture/2, 1001)
         if e.lens:
@@ -354,7 +353,7 @@ rows = [
 ]
 st.dataframe([{'Parámetro': k, 'Resultado': v} for k, v in rows], hide_index=True, width="stretch")
 st.caption(f'Sentido de salida axial: {"izquierda (−x)" if result["output_direction"] < 0 else "derecha (+x)"}. Plano de salida: x = {result["output_x"]:g} mm.')
-st.caption('¹ Posiciones relativas a la abertura inicial. En el dibujo se suma la posición absoluta de referencia. Para pupilas en infinito, su diámetro lineal no es finito. Aire a ambos lados: los planos nodales coinciden con los principales.')
+st.caption('¹ Posiciones relativas al primer plano del recorrido. En el dibujo se suma la posición absoluta de referencia. Para pupilas en infinito, su diámetro lineal no es finito. Aire a ambos lados: los planos nodales coinciden con los principales.')
 st.dataframe([{'Elemento': f['name'], 'Foco objeto': f['label']+('G' if exact else ''), 'Posición F (mm)': fmt(f['front']), 'Foco imagen': f['label_prime']+('G' if exact else ''), 'Posición F′ (mm)': fmt(f['back']), 'Focal efectiva (mm)': fmt(f['focal'])} for f in foci], hide_index=True, width='stretch')
 if exact:
     st.dataframe([{'Elemento': f['name'], 'Foco imagen exacto': f['label_prime'], 'Posición relativa (mm)': f['exact_back'][0], 'Radio RMS (mm)': f['exact_back'][2]} for f in foci if f.get('exact_back') is not None], hide_index=True, width='stretch')
@@ -372,7 +371,7 @@ st.markdown('La matriz ABCD transforma el vector **(altura, θ)** en la aproxima
 selection = st.selectbox('Recorrido matricial', range(len(elements)+1), format_func=lambda i: 'Sistema completo · incluye espacios y retorno' if i == 0 else f'Elemento aislado {i} · {elements[i-1].name}')
 if selection == 0:
     matrix_path, matrix_start = surfaces, 0.
-    st.caption(f'Entrada: abertura inicial x=0 mm. Salida: x={result["output_x"]:g} mm; sentido {"−x" if result["output_direction"] < 0 else "+x"}.')
+    st.caption(f'Entrada: primer plano x={origin:g} mm. Salida: x={result["output_x"]+origin:g} mm; sentido {"−x" if result["output_direction"] < 0 else "+x"}.')
 else:
     selected_element = elements[selection-1]
     matrix_path = build([selected_element], diameter, wavelength)[1:]
@@ -400,6 +399,6 @@ with st.expander('Matrices de propagación e interacción, paso a paso'):
         st.latex('T_{'+str(i)+'}='+latex_matrix(row['propagation'])+r',\quad S_{'+str(i)+'}='+latex_matrix(row['interface']))
     st.caption('M = Sₖ Tₖ … S₂ T₂ S₁ T₁. Las desviaciones matriciales se aplican en planos de vértice; el trazado exacto de la gráfica utiliza las superficies curvas y Snell, no estas matrices.')
 
-export = dict(source_mode=source_mode, object_distance=(obj if finite_source else None), source_focus=(result['front_focus'] if source_mode == 'Desde el foco F' else None), object_height=height, placement=placement, reference_position=origin, initial_diameter=diameter, wavelength_nm=wavelength, elements=edited)
+export = dict(source_mode=source_mode, object_distance=(obj if finite_source else None), source_focus=(result['front_focus'] if source_mode == 'Desde el foco F' else None), object_height=height, placement=placement, reference_position=origin, aperture_position=aperture_position, initial_diameter=diameter, wavelength_nm=wavelength, elements=edited)
 st.download_button('Descargar configuración JSON', json.dumps(export, ensure_ascii=False, indent=2), 'sistema-optico.json', 'application/json')
 st.caption('Referencias: [OptiCampus · trazado de lentes delgadas](https://opticampus.opti.vision/cecourse.php?url=ray_tracing/) · [Edmund Optics · trazado paraxial](https://www.edmundoptics.com/knowledge-center/application-notes/optics/geometrical-optics-101-paraxial-ray-tracing-calculations/) · [LibreTexts · rayos de construcción](https://phys.libretexts.org/Bookshelves/University_Physics/Calculus-Based_Physics_%28Schnick%29/Volume_B%3A_Electricity_Magnetism_and_Optics/B28%3A_Thin_Lenses_-_Ray_Tracing) · [reflexión y Snell](https://www.pbr-book.org/4ed/Reflection_Models/Specular_Reflection_and_Transmission) · [matrices ABCD](https://www.rp-photonics.com/abcd_matrix.html) · [pupilas de entrada y salida](https://www.rp-photonics.com/entrance_and_exit_pupil.html)')

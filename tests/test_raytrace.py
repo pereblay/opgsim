@@ -9,6 +9,18 @@ class ExactRayTests(unittest.TestCase):
     def trace(self, elements, y=0., angle=0.):
         return trace_exact(geometry(elements, 100, 550), -120, y, angle, -180, 300)
 
+    def test_movable_stop_between_lens_and_mirror(self):
+        elements = [Element(position=0., index=1.5), Element(kind='Espejo plano', position=60.)]
+        for x in (15., 32.):
+            result = physical_paraxial(elements, 2., 550, -120., aperture_x=x)
+            stop = result['path'][result['stop']]
+            self.assertTrue(stop.name.startswith('Abertura inicial'))
+            self.assertEqual([s.x for s in result['path'] if s.name.startswith('Abertura inicial')],
+                             [x, 120.-x])
+            ray = trace_exact(geometry(elements, 2., 550, x), -120., 0., 0., -150., 150.)
+            crossings = [event['point'][0] for event in ray['events'] if event['surface']=='Abertura inicial']
+            self.assertEqual(crossings, [x, x])
+
     def test_plane_mirror_reverses_and_equal_angles(self):
         ray = self.trace([Element(kind='Espejo plano', position=50, aperture=80)], angle=.12)
         events = [e for e in ray['events'] if e['event'].startswith('Reflexión')]

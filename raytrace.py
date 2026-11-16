@@ -95,9 +95,9 @@ class Rim:
         return None
 
 
-def geometry(elements, diameter, wavelength):
-    build(elements, diameter, wavelength)  # Validate common optical parameters.
-    boundaries = [Boundary(0, math.inf, diameter, 'Abertura inicial', 'stop')]
+def geometry(elements, diameter, wavelength, aperture_x=0.):
+    build(elements, diameter, wavelength, aperture_x)  # Validate common optical parameters.
+    boundaries = [Boundary(aperture_x, math.inf, diameter, 'Abertura inicial', 'stop')]
     # The first vertex may define x=0; its spherical cap can extend to x<0.
     last_extent = -math.inf
     for original in sorted(elements, key=lambda e: e.position):
@@ -123,18 +123,21 @@ def geometry(elements, diameter, wavelength):
             edge = e.position+float(sag(r, e.aperture/2))
             extent1, extent2 = min(e.position, edge), max(e.position, edge)
             boundaries.append(Boundary(e.position, r, e.aperture, e.name, 'mirror'))
+        if extent1+TOL < aperture_x < extent2-TOL and aperture_x != e.position:
+            raise ValueError(f'El diafragma de apertura intersecta {e.name}; colócalo en un espacio libre.')
         if extent1 <= last_extent+TOL:
             raise ValueError(f'{e.name}: separa sus superficies y monturas del elemento anterior y de la abertura inicial.')
         last_extent = extent2
     return boundaries
 
 
-def physical_paraxial(elements, diameter, wavelength, object_x, thin_lens=False):
+def physical_paraxial(elements, diameter, wavelength, object_x, thin_lens=False, aperture_x=0.):
     """Gaussian reference along the axial itinerary, including return through lenses."""
-    forward = build(elements, diameter, wavelength)
+    forward = build(elements, diameter, wavelength, aperture_x)
     if thin_lens:
         # Collapse both refractions into one ideal plane, without glass translation.
-        collapsed = [forward[0]]
+        forward = build(elements, diameter, wavelength)
+        collapsed = [replace(forward[0], x=aperture_x)]
         i = 1
         for e in sorted(elements, key=lambda e: e.position):
             if e.lens:
@@ -145,7 +148,7 @@ def physical_paraxial(elements, diameter, wavelength, object_x, thin_lens=False)
             else:
                 collapsed.append(forward[i])
                 i += 1
-        forward = collapsed
+        forward = sorted(collapsed, key=lambda s: s.x)
     mirror = next((e for e in sorted(elements, key=lambda e: e.position) if e.kind.startswith('Espejo')), None)
     if mirror is None:
         path = forward
@@ -159,7 +162,7 @@ def physical_paraxial(elements, diameter, wavelength, object_x, thin_lens=False)
             s = forward[j]
             n_back = forward[j-1].n_after if j else 1.
             path.append(Surface(2*mirror.position-s.x, s.aperture, s.matrix.copy(), s.name+' · retorno', n_back, s.kind))
-        output_x, direction = 0., -1
+        output_x, direction = forward[0].x, -1
     result = analyze(path, object_x)
     unfolded_end = path[-1].x
     image_distance = None if result['image_x'] is None else result['image_x']-unfolded_end
@@ -239,17 +242,17 @@ def trace_exact(boundaries, object_x, height, angle, xmin, xmax, max_events=100)
                 exit_point=exit_point, exit_direction=exit_direction)
 
 
-def focal_points(elements, diameter, wavelength, object_x):
+def focal_points(elements, diameter, wavelength, object_x, aperture_x=0.):
     """Isolated-element focal positions plus combined-system focal positions."""
     rows = []
     for i, element in enumerate(sorted(elements, key=lambda e: e.position), 1):
         if element.kind == 'Diafragma':
             continue
-        r = physical_paraxial([element], diameter, wavelength, object_x)
+        r = physical_paraxial([element], diameter, wavelength, object_x, aperture_x=aperture_x)
         rows.append(dict(name=element.name, label=f'F{i}', label_prime=f'F{i}′',
                          focal=r['focal'], front=r['front_focus'],
                          back=None if r['back_focus'] is None else r['output_x']+r['output_direction']*r['back_focus']))
-    r = physical_paraxial(elements, diameter, wavelength, object_x)
+    r = physical_paraxial(elements, diameter, wavelength, object_x, aperture_x=aperture_x)
     rows.append(dict(name='Sistema completo', label='F', label_prime='F′', focal=r['focal'],
                      front=r['front_focus'], back=None if r['back_focus'] is None else r['output_x']+r['output_direction']*r['back_focus']))
     return rows
@@ -382,11 +385,13 @@ def exact_admitted_interval(boundaries, object_x, height, xmin, xmax):
     """
     axial = trace_exact(boundaries, object_x, 0., 0., xmin, xmax)
     itinerary = [(e['surface'], e['event']) for e in axial['events'] if e['event'] != 'Abertura']
-    entrance = boundaries[0]
-    distance = entrance.x-object_x
+    entrance = min((b for b in boundaries if isinstance(b, Boundary)), key=lambda b: b.x)
+    distance = entrance.x + min(0., float(sag(entrance.radius, entrance.aperture/2))) - object_x
     if distance <= 0 or axial['blocked']:
         return None
-    lo, hi = (-entrance.aperture/2-height)/distance, (entrance.aperture/2-height)/distance
+    edge_distance = entrance.x + max(0., float(sag(entrance.radius, entrance.aperture/2))) - object_x
+    bounds = [(y-height)/d for y in (-entrance.aperture/2, entrance.aperture/2) for d in (distance, edge_distance)]
+    lo, hi = min(bounds), max(bounds)
     def admitted(u):
         ray = trace_exact(boundaries, object_x, height, math.atan(u), xmin, xmax)
         return ray['blocked'] is None and [(e['surface'], e['event']) for e in ray['events'] if e['event'] != 'Abertura'] == itinerary
@@ -466,11 +471,11 @@ def ray_image(rays):
     return float(x), float(heights.mean()), float(heights.std())
 
 
-def exact_back_focus(elements, diameter, wavelength, count=5):
+def exact_back_focus(elements, diameter, wavelength, count=5, aperture_x=0.):
     """Best focus of a parallel axial bundle with the same real aperture rule."""
-    result = physical_paraxial(elements, diameter, wavelength, None)
-    boundaries = geometry(elements, diameter, wavelength)
-    end = max([0.]+[e.position+e.thickness for e in elements])+200.
+    result = physical_paraxial(elements, diameter, wavelength, None, aperture_x=aperture_x)
+    boundaries = geometry(elements, diameter, wavelength, aperture_x)
+    end = max([aperture_x]+[e.position+e.thickness for e in elements])+200.
     x, rays = axial_source_bundle(result, 'infinity', count, -100.)
     h, u = rays[-1]
     scale = exact_axial_aperture_scale(boundaries, x, h, u, -300., end)

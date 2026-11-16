@@ -82,12 +82,14 @@ def sag(radius, y):
     return (y/radius)*y / (1 + np.sqrt(np.maximum(0., 1 - (y/radius)**2)))
 
 
-def build(elements, diameter, wavelength):
+def build(elements, diameter, wavelength, aperture_x=0.):
     if not math.isfinite(diameter) or diameter <= 0:
         raise ValueError('La abertura inicial debe ser positiva.')
     if not math.isfinite(wavelength) or wavelength <= 0:
         raise ValueError('La longitud de onda debe ser positiva.')
-    surfaces = [Surface(0., diameter, np.eye(2), 'Abertura inicial', 1., 'stop')]
+    if not math.isfinite(aperture_x):
+        raise ValueError('La posición del diafragma debe ser finita.')
+    surfaces = [Surface(aperture_x, diameter, np.eye(2), 'Abertura inicial', 1., 'stop')]
     last = 0.
     for e in sorted(elements, key=lambda e: e.position):
         vals = [e.position, e.aperture, e.thickness, e.index, e.dispersion]
@@ -115,7 +117,7 @@ def build(elements, diameter, wavelength):
             if e.kind == 'Diafragma' and e.thickness > 0:
                 last += e.thickness
                 surfaces.append(Surface(last, e.aperture, np.eye(2), e.name+' · salida', 1., 'stop'))
-    return surfaces
+    return sorted(surfaces, key=lambda s: s.x)
 
 
 def matrices(surfaces):
