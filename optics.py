@@ -64,6 +64,7 @@ class Surface:
     name: str
     n_after: float
     kind: str = 'refraction'
+    user_aperture: bool = False
 
 
 def translation(distance, n=1.):
@@ -89,7 +90,7 @@ def build(elements, diameter, wavelength, aperture_x=0.):
         raise ValueError('La longitud de onda debe ser positiva.')
     if not math.isfinite(aperture_x):
         raise ValueError('La posición del diafragma debe ser finita.')
-    surfaces = [Surface(aperture_x, diameter, np.eye(2), 'Abertura inicial', 1., 'stop')]
+    surfaces = [Surface(aperture_x, diameter, np.eye(2), 'Abertura inicial', 1., 'stop', user_aperture=True)]
     last = 0.
     for e in sorted(elements, key=lambda e: e.position):
         vals = [e.position, e.aperture, e.thickness, e.index, e.dispersion]
@@ -167,7 +168,7 @@ def conjugate(m, x):
     return float(x+distance), float(np.linalg.det(m)/m[1, 1])
 
 
-def analyze(surfaces, object_x):
+def analyze(surfaces, object_x, fixed_as=False):
     # None denotes an axial object at infinity; positive coordinates can
     # describe a virtual incident object (e.g. the front focus of a diverger).
     if object_x is not None and not math.isfinite(object_x):
@@ -184,7 +185,12 @@ def analyze(surfaces, object_x):
     limits = [s.aperture/(2*abs((p @ basis)[0]))
               if abs((p @ basis)[0]) > EPS else math.inf
               for s, p in zip(surfaces, pre)]
-    stop = int(np.argmin(limits))
+    limiting_stop = int(np.argmin(limits))
+    stop = limiting_stop
+    if fixed_as:
+        stop = next((i for i, s in enumerate(surfaces) if s.user_aperture), None)
+        if stop is None:
+            raise ValueError('El recorrido no alcanza el diafragma fijado. Muévelo antes del espejo o activa la estimación automática del AS.')
     # Entrance pupil = backward image of stop through preceding optics.
     entrance_x, entrance_mag = conjugate(np.linalg.inv(pre[stop]), 0.)
     # Image the stop plane through only the interfaces encountered afterwards.
@@ -195,7 +201,7 @@ def analyze(surfaces, object_x):
     c = m[1, 0]
     focal = None if abs(c) < EPS else float(-1/c)
     return dict(matrix=m, pre=pre, post=post, image_x=image_x, magnification=magnification,
-                stop=stop, entrance_x=entrance_x,
+                stop=stop, limiting_stop=limiting_stop, entrance_x=entrance_x,
                 entrance_diameter=None if entrance_mag is None else abs(entrance_mag)*surfaces[stop].aperture,
                 exit_x=exit_x, exit_diameter=None if exit_mag is None else abs(exit_mag)*surfaces[stop].aperture,
                 focal=focal, back_focus=None if focal is None else float(-m[0,0]/c),

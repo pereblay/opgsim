@@ -56,6 +56,15 @@ class AppTests(unittest.TestCase):
         self.assertNotEqual(app.session_state['exercise']['id'], first_id)
         self.assertEqual(app.session_state['exercise_scene']['rays'], [])
 
+    def test_aperture_stop_toggle(self):
+        app = AppTest.from_file(APP, default_timeout=30).run()
+        self.assertTrue(app.checkbox(key='auto_as').value)
+        app.checkbox(key='auto_as').uncheck().run()
+        self.assertFalse(app.exception)
+        self.assertTrue(any('AS fijado por el usuario: **Abertura inicial**' in i.value for i in app.info))
+        app.checkbox(key='auto_as').check().run()
+        self.assertTrue(any('AS automático:' in i.value for i in app.info))
+
     def test_signed_bank_positions_survive_edit_and_add(self):
         app = AppTest.from_file(APP, default_timeout=30).run()
         for x in (-30., 25.):

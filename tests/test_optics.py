@@ -30,6 +30,20 @@ class OpticsTests(unittest.TestCase):
         self.assertAlmostEqual(r['entrance_x'], 0)
         self.assertAlmostEqual(r['exit_diameter'], 10)
 
+    def test_user_as_defines_pupils_but_does_not_relax_clipping(self):
+        from raytrace import physical_paraxial
+        elements = [Element(kind='Diafragma', position=40., aperture=2., thickness=0.)]
+        auto, fixed = [physical_paraxial(elements, 20., 550., -100., aperture_x=10., fixed_as=mode)
+                       for mode in (False, True)]
+        self.assertEqual(auto['entrance_x'], 40.)
+        self.assertEqual(fixed['entrance_x'], 10.)
+        self.assertEqual(fixed['exit_diameter'], 20.)
+        self.assertEqual(auto['angular_aperture'], fixed['angular_aperture'])
+        self.assertEqual(auto['stop'], fixed['limiting_stop'])
+        with self.assertRaisesRegex(ValueError, 'no alcanza'):
+            physical_paraxial([Element(kind='Espejo plano', position=5.)], 20., 550., -100.,
+                              aperture_x=10., fixed_as=True)
+
     def test_exit_pupil_and_stop_selection(self):
         ss = self.thin(stop=100)
         ss.append(Surface(65, 5, np.eye(2), 'Stop', 1))

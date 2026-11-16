@@ -131,7 +131,7 @@ def geometry(elements, diameter, wavelength, aperture_x=0.):
     return boundaries
 
 
-def physical_paraxial(elements, diameter, wavelength, object_x, thin_lens=False, aperture_x=0.):
+def physical_paraxial(elements, diameter, wavelength, object_x, thin_lens=False, aperture_x=0., fixed_as=False):
     """Gaussian reference along the axial itinerary, including return through lenses."""
     forward = build(elements, diameter, wavelength, aperture_x)
     if thin_lens:
@@ -163,7 +163,7 @@ def physical_paraxial(elements, diameter, wavelength, object_x, thin_lens=False,
             n_back = forward[j-1].n_after if j else 1.
             path.append(Surface(2*mirror.position-s.x, s.aperture, s.matrix.copy(), s.name+' · retorno', n_back, s.kind))
         output_x, direction = forward[0].x, -1
-    result = analyze(path, object_x)
+    result = analyze(path, object_x, fixed_as=fixed_as)
     unfolded_end = path[-1].x
     image_distance = None if result['image_x'] is None else result['image_x']-unfolded_end
     for key in ['image_x', 'exit_x', 'h2']:

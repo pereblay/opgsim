@@ -55,7 +55,7 @@ with st.sidebar:
     placement = st.radio('Situación del objeto', ['Por encima del eje', 'Por debajo del eje', 'Centrado simétricamente'], disabled=not finite_source)
     diameter = st.number_input('Diámetro de abertura inicial (mm)', min_value=0.01, value=25., step=1.)
     wavelength = st.slider('Longitud de onda (nm)', 380, 780, 550)
-    st.caption('El diafragma móvil es una abertura física. El AS es la abertura que limita el haz del objeto axial; también puede ser la montura de una lente.')
+    auto_as = st.checkbox('Estimar automáticamente el AS', value=True, key='auto_as', help='Desmarca para usar como AS el diafragma definido por la posición y el diámetro de esta barra lateral.')
     st.header('Trazado')
     tracing_mode = st.selectbox('Modelo de rayos', ['Paraxial · aproximación matricial', 'Exacto · Snell y reflexión'], index=1)
     exact = tracing_mode.startswith('Exacto')
@@ -124,14 +124,14 @@ try:
         raise ValueError('Sitúa el objeto a la izquierda del primer elemento y del diafragma de apertura.')
     elements = [Element(**dict(row, position=row['position']-origin)) for row in edited]
     boundaries = geometry(elements, diameter, wavelength, aperture_x)
-    result = physical_paraxial(elements, diameter, wavelength, obj, aperture_x=aperture_x)
+    result = physical_paraxial(elements, diameter, wavelength, obj, aperture_x=aperture_x, fixed_as=not auto_as)
     if source_mode == 'Paralelos desde infinito':
-        result = physical_paraxial(elements, diameter, wavelength, None, aperture_x=aperture_x)
+        result = physical_paraxial(elements, diameter, wavelength, None, aperture_x=aperture_x, fixed_as=not auto_as)
     elif source_mode == 'Desde el foco F':
         if result['front_focus'] is None:
             st.info('El sistema es afocal: no hay un foco F finito. Selecciona rayos paralelos desde infinito o añade potencia óptica.')
             st.stop()
-        result = physical_paraxial(elements, diameter, wavelength, result['front_focus'], aperture_x=aperture_x)
+        result = physical_paraxial(elements, diameter, wavelength, result['front_focus'], aperture_x=aperture_x, fixed_as=not auto_as)
     surfaces = result['path']
     for element in elements:
         if element.clear_aperture < element.aperture-1e-8:
@@ -341,7 +341,10 @@ c3.metric('Aumento transversal', fmt(result['magnification'], ' ×') if finite_s
 c4.metric('Altura de imagen', fmt(None if result['image_x'] is None else (abs(result['magnification'])*height if finite_source else 0.)))
 st.caption('O: objeto. Imagen y focos gaussianos: sufijo G en modo exacto. O′: cruce o plano de mínima dispersión del haz mostrado; F′: mínimo del haz paralelo. El subíndice i identifica un elemento aislado.')
 stop_name = surfaces[result['stop']].name
-st.info(f'Abertura limitante para el objeto axial: **{stop_name}** (AS, x = {as_x+origin:g} mm, Ø {as_plane.aperture:g} mm). '+('Sistema afocal (C ≈ 0).' if result['focal'] is None else ''))
+as_label = 'AS automático' if auto_as else 'AS fijado por el usuario'
+st.info(f'{as_label}: **{stop_name}** (x = {as_x+origin:g} mm, Ø {as_plane.aperture:g} mm). '+('Sistema afocal (C ≈ 0).' if result['focal'] is None else ''))
+if not auto_as and result['limiting_stop'] != result['stop']:
+    st.caption(f"La abertura limitante calculada para el haz axial es {surfaces[result['limiting_stop']].name}. PE y PS se calculan con el AS fijado.")
 st.caption('PE: imagen del AS vista desde el objeto a través de la óptica anterior. PS: imagen del mismo AS vista desde la salida a través de la óptica posterior. Sin elementos ópticos en un lado, su pupila coincide con el AS. Con espejos, anterior y posterior siguen el recorrido de la luz.')
 rows = [
     ('Pupila de entrada · x en el banco', fmt(None if result['entrance_x'] is None else result['entrance_x']+origin)),
@@ -405,6 +408,6 @@ with st.expander('Matrices de propagación e interacción, paso a paso'):
         st.latex('T_{'+str(i)+'}='+latex_matrix(row['propagation'])+r',\quad S_{'+str(i)+'}='+latex_matrix(row['interface']))
     st.caption('M = Sₖ Tₖ … S₂ T₂ S₁ T₁. Las desviaciones matriciales se aplican en planos de vértice; el trazado exacto de la gráfica utiliza las superficies curvas y Snell, no estas matrices.')
 
-export = dict(source_mode=source_mode, object_distance=(obj if finite_source else None), source_focus=(result['front_focus'] if source_mode == 'Desde el foco F' else None), object_height=height, placement=placement, reference_position=origin, aperture_position=aperture_position, initial_diameter=diameter, wavelength_nm=wavelength, elements=edited)
+export = dict(as_mode="automatic" if auto_as else "fixed", source_mode=source_mode, object_distance=(obj if finite_source else None), source_focus=(result['front_focus'] if source_mode == 'Desde el foco F' else None), object_height=height, placement=placement, reference_position=origin, aperture_position=aperture_position, initial_diameter=diameter, wavelength_nm=wavelength, elements=edited)
 st.download_button('Descargar configuración JSON', json.dumps(export, ensure_ascii=False, indent=2), 'sistema-optico.json', 'application/json')
 st.caption('Referencias: [OptiCampus · trazado de lentes delgadas](https://opticampus.opti.vision/cecourse.php?url=ray_tracing/) · [Edmund Optics · trazado paraxial](https://www.edmundoptics.com/knowledge-center/application-notes/optics/geometrical-optics-101-paraxial-ray-tracing-calculations/) · [LibreTexts · rayos de construcción](https://phys.libretexts.org/Bookshelves/University_Physics/Calculus-Based_Physics_%28Schnick%29/Volume_B%3A_Electricity_Magnetism_and_Optics/B28%3A_Thin_Lenses_-_Ray_Tracing) · [reflexión y Snell](https://www.pbr-book.org/4ed/Reflection_Models/Specular_Reflection_and_Transmission) · [matrices ABCD](https://www.rp-photonics.com/abcd_matrix.html) · [pupilas de entrada y salida](https://www.rp-photonics.com/entrance_and_exit_pupil.html)')
