@@ -74,14 +74,33 @@ with st.sidebar:
 
 st.subheader('1 · Elementos del sistema')
 st.caption('La posición x de cada elemento se edita de forma independiente y admite ambos signos. Altura = diámetro útil, centrado en el eje.')
+kind = st.selectbox('Tipo de elemento', TYPES)
+new_element = Element(name=f'E{len(st.session_state.elements)+1}', kind=kind)
 with st.form('add', clear_on_submit=False):
-    c1, c2, c3 = st.columns([2, 2, 1], vertical_alignment='bottom')
-    kind = c1.selectbox('Tipo de elemento', TYPES)
-    position = c2.number_input('Posición x en el banco (mm)', value=80., step=10.)
-    submitted = c3.form_submit_button('Añadir elemento', width="stretch")
+    fields = st.columns(3)
+    new_element.position = fields[0].number_input('Posición x en el banco (mm)', value=80., step=10.)
+    if new_element.lens:
+        defaults = new_element.radii()
+    elif kind in ('Espejo cóncavo', 'Espejo convexo'):
+        defaults = (-abs(new_element.r1) if kind == 'Espejo cóncavo' else abs(new_element.r1),)
+    else:
+        defaults = ()
+    for side, radius in enumerate(defaults, 1):
+        if math.isinf(radius):
+            fields[side].caption(f'Cara {side} plana (R = ∞)')
+            continue
+        signed = kind == 'Lente personalizada'
+        label = f'Radio de la cara {side} (mm)' if signed else f'Radio de la cara {side} · módulo (mm)'
+        value = fields[side].number_input(label, value=radius if signed else abs(radius),
+                                          min_value=None if signed else 0., step=1., key=f'add_r{side}_{kind}')
+        setattr(new_element, f'r{side}', value if signed else math.copysign(value, radius))
+    submitted = st.form_submit_button('Añadir elemento')
     if submitted:
-        st.session_state.elements.append(asdict(Element(name=f'E{len(st.session_state.elements)+1}', kind=kind, position=position)))
-        st.session_state.version += 1
+        if any(getattr(new_element, f'r{i}') == 0 for i, r in enumerate(defaults, 1) if math.isfinite(r)):
+            st.error('El radio de una cara curva debe ser distinto de cero.')
+        else:
+            st.session_state.elements.append(asdict(new_element))
+            st.session_state.version += 1
 
 columns = {
     'name': st.column_config.TextColumn('Nombre', required=True),

@@ -86,6 +86,23 @@ class AppTests(unittest.TestCase):
             for row in rows:
                 self.assertEqual(labels[row['name']], row['position'])
 
+    def test_add_curvature_fields_match_faces(self):
+        app = AppTest.from_file(APP, default_timeout=30).run()
+        kind = lambda: next(w for w in app.selectbox if w.label == 'Tipo de elemento')
+        kind().select('Lente personalizada').run()
+        app.number_input(key='add_r1_Lente personalizada').set_value(-32.)
+        app.number_input(key='add_r2_Lente personalizada').set_value(76.)
+        next(b for b in app.button if b.label == 'Añadir elemento').click().run()
+        self.assertFalse(app.error)
+        added = app.session_state['elements'][-1]
+        self.assertEqual((added['r1'], added['r2']), (-32., 76.))
+        for name, sides in [('Plano-convexa', [2]), ('Convexa-plana', [1]), ('Espejo cóncavo', [1]),
+                            ('Espejo plano', []), ('Diafragma', [])]:
+            kind().select(name).run()
+            self.assertEqual([w.key for w in app.number_input if (w.key or '').startswith('add_r')],
+                             [f'add_r{i}_{name}' for i in sides])
+            self.assertFalse(app.exception)
+
     def test_add_remove_preserves_configuration(self):
         app = AppTest.from_file(APP, default_timeout=30).run()
         next(b for b in app.button if b.label == 'Añadir elemento').click().run()
