@@ -25,7 +25,7 @@ if optics_module is not None and getattr(optics_module, '_opgsim_revision', None
         if name in sys.modules:
             importlib.reload(sys.modules[name])
 
-from presets import PRESETS
+from presets import BENCH_PRESETS, PRESETS
 from optics import Element, TYPES, CONIC_MIRRORS, HYPERBOLIC_MIRRORS, sag, admitted_interval, EPS, build, matrix_walkthrough
 from raytrace import geometry, physical_paraxial, trace_exact, focal_points, trace_gaussian, axial_source_bundle, exact_axial_aperture_scale, exact_admitted_interval, exact_chief_slope, ray_image, exact_back_focus, construction_rays
 from exercise_portal import render_exercise_portal
@@ -47,39 +47,54 @@ def preset_rows(name):
     return [dict(r, position=r['position']-first) for r in rows]
 
 
+def load_preset():
+    name = st.session_state.selected_preset
+    if name in BENCH_PRESETS:
+        example = BENCH_PRESETS[name]
+        st.session_state.elements = [asdict(element) for element in example['elements']]
+        st.session_state.update(
+            aperture_position=example['aperture_position'],
+            aperture_diameter=example['aperture_diameter'],
+            ray_model=example['ray_model'],
+            source_mode='Paralelos desde infinito',
+            bundle_ray_count=7,
+            view_extension=160.,
+        )
+    else:
+        st.session_state.elements = preset_rows(name)
+    st.session_state.version += 1
+
+
 if 'elements' not in st.session_state:
     st.session_state.elements = preset_rows('Lente convergente')
     st.session_state.version = 0
 
 with st.sidebar:
     st.header('Objeto y abertura inicial')
-    aperture_position = st.number_input('Posición x del diafragma de apertura (mm)', value=0., step=5., key='aperture_position')
-    source_mode = st.radio('Origen de los rayos', ['Objeto finito', 'Paralelos desde infinito', 'Desde el foco F'])
+    aperture_position = st.number_input('Posición x del diafragma de apertura (mm)', value=None if 'aperture_position' in st.session_state else 0., step=5., key='aperture_position')
+    source_mode = st.radio('Origen de los rayos', ['Objeto finito', 'Paralelos desde infinito', 'Desde el foco F'], key='source_mode')
     finite_source = source_mode == 'Objeto finito'
     obj = st.number_input('Posición x del objeto en el banco (mm)', value=-120., step=10., disabled=not finite_source)
     height = st.number_input('Altura total del objeto (mm)', min_value=0., value=5., step=1., disabled=not finite_source)
     placement = st.radio('Situación del objeto', ['Por encima del eje', 'Por debajo del eje', 'Centrado simétricamente'], disabled=not finite_source)
-    diameter = st.number_input('Diámetro de abertura inicial (mm)', min_value=0.01, value=25., step=1.)
+    diameter = st.number_input('Diámetro de abertura inicial (mm)', min_value=0.01, value=None if 'aperture_diameter' in st.session_state else 25., step=1., key='aperture_diameter')
     wavelength = st.slider('Longitud de onda (nm)', 380, 780, 550)
     auto_as = st.checkbox('Estimar automáticamente el AS', value=True, key='auto_as', help='Desmarca para usar como AS el diafragma definido por la posición y el diámetro de esta barra lateral.')
     st.header('Trazado')
-    tracing_mode = st.selectbox('Modelo de rayos', ['Paraxial · aproximación matricial', 'Exacto · Snell y reflexión', 'Paraxial · lente delgada'], index=1)
+    tracing_mode = st.selectbox('Modelo de rayos', ['Paraxial · aproximación matricial', 'Exacto · Snell y reflexión', 'Paraxial · lente delgada'], index=None if 'ray_model' in st.session_state else 1, key='ray_model')
     exact = tracing_mode.startswith('Exacto')
     thin_lens = tracing_mode == 'Paraxial · lente delgada'
     construction_families = ['Principal y marginales', 'Paralelo al eje', 'Rayo focal']
     ray_families = st.multiselect('Rayos que se dibujan', [*construction_families, 'Haz'],
                                  default=construction_families, disabled=not finite_source)
     st.header('Visualización')
-    ray_count = st.slider('Rayos del haz por punto', 3, 15, 5, step=2)
-    extension = st.number_input('Extensión visible del recorrido (mm)', min_value=1., value=160., step=20.)
+    ray_count = st.slider('Rayos del haz por punto', 3, 15, value=None if 'bundle_ray_count' in st.session_state else 5, step=2, key='bundle_ray_count')
+    extension = st.number_input('Extensión visible del recorrido (mm)', min_value=1., value=None if 'view_extension' in st.session_state else 160., step=20., key='view_extension')
     show_virtual = True
     equal_scale = st.checkbox('Misma escala horizontal y vertical', True)
     st.header('Ejemplos')
-    preset = st.selectbox('Configuración', list(PRESETS))
-    if st.button('Cargar ejemplo', width="stretch"):
-        st.session_state.elements = preset_rows(preset)
-        st.session_state.version += 1
-        st.rerun()
+    st.selectbox('Configuración', [*PRESETS, *BENCH_PRESETS], key='selected_preset')
+    st.button('Cargar ejemplo', on_click=load_preset, width="stretch")
 
 st.subheader('1 · Elementos del sistema')
 st.caption('Edita la posición (x, y), el diámetro útil y el giro de cada elemento. El giro positivo es antihorario.')

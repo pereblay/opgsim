@@ -3,6 +3,7 @@ import unittest
 import sys
 from pathlib import Path
 from streamlit.testing.v1 import AppTest
+from presets import BENCH_PRESETS, PRESETS
 
 APP = str(Path(__file__).resolve().parents[1] / 'app.py')
 
@@ -31,7 +32,7 @@ class AppTests(unittest.TestCase):
     def test_presets_models_and_plot_conventions(self):
         app = AppTest.from_file(APP, default_timeout=30).run()
         self.assertFalse(app.exception)
-        for preset in next(s for s in app.selectbox if s.label == 'Configuración').options:
+        for preset in PRESETS:
             next(s for s in app.selectbox if s.label == 'Configuración').select(preset)
             next(b for b in app.button if b.label == 'Cargar ejemplo').click().run()
             for mode in ['Paraxial · aproximación matricial', 'Exacto · Snell y reflexión']:
@@ -130,7 +131,7 @@ class AppTests(unittest.TestCase):
 
     def test_new_axial_sources_all_presets_and_models(self):
         app = AppTest.from_file(APP, default_timeout=30).run()
-        for preset in next(s for s in app.selectbox if s.label == 'Configuración').options:
+        for preset in PRESETS:
             next(s for s in app.selectbox if s.label == 'Configuración').select(preset)
             next(b for b in app.button if b.label == 'Cargar ejemplo').click().run()
             for source in ['Paralelos desde infinito', 'Desde el foco F']:
@@ -259,6 +260,32 @@ class AppTests(unittest.TestCase):
         row = app.session_state['elements'][-1]
         self.assertEqual((row['kind'], row['conic_constant'], row['central_opening'], row['invert_mirror']),
                          (kind, -2.5, 6., True))
+
+    def test_complete_presets_load_with_ready_to_trace_settings(self):
+        app = AppTest.from_file(APP, default_timeout=30).run()
+        for name, example in BENCH_PRESETS.items():
+            next(s for s in app.selectbox if s.label == 'Configuración').select(name)
+            next(b for b in app.button if b.label == 'Cargar ejemplo').click().run()
+            self.assertFalse(app.exception, name)
+            self.assertFalse(app.error, name)
+            self.assertEqual(app.radio(key='source_mode').value, 'Paralelos desde infinito')
+            self.assertEqual(app.number_input(key='aperture_position').value, example['aperture_position'])
+            self.assertEqual(app.number_input(key='aperture_diameter').value, example['aperture_diameter'])
+            self.assertEqual(app.selectbox(key='ray_model').value, example['ray_model'])
+            self.assertEqual(len(app.get('plotly_chart')), 2)
+            if name.startswith('Telescopio refractor'):
+                self.assertTrue(any('Sistema afocal' in row.value for row in app.info), name)
+            elif name.startswith('Teleobjetivo'):
+                focal = next(m for m in app.metric if m.label == 'Focal efectiva')
+                self.assertEqual(focal.value, '250.000 mm')
+                plot = json.loads(app.get('plotly_chart')[1].proto.spec)
+                image = next(t for t in plot['data'] if t.get('name') == 'O′ · Imagen gaussiana')
+                self.assertAlmostEqual(image['x'][0], 145.)
+            else:
+                rays = next(d.value for d in app.dataframe if 'Reflexiones' in d.value.columns)
+                self.assertTrue(any(rays['Reflexiones'] == 2), name)
+                if 'Ritchey' in name:
+                    self.assertEqual(sum(rays['Reflexiones'] == 2), 6)
 
     def test_matrix_panel_element_and_input(self):
         app = AppTest.from_file(APP, default_timeout=30).run()

@@ -21,6 +21,13 @@ Para aprender el procedimiento con papel y regla, consulta la [guía paso a paso
 3. Añade elementos y edita posiciones relativas, diámetros, grosores, índices y radios en la tabla. Elimina elementos con el selector inferior. Hay ejemplos en la barra lateral.
 4. Elige trazado paraxial o exacto e inspecciona la disposición, los parámetros y la tabla de rayos. Oculta trayectorias desde la leyenda: se ocultan juntas sus prolongaciones y marcas de bloqueo. No se dibujan flechas. Las gráficas permiten zoom y exportación de imágenes; la configuración se descarga en JSON.
 
+En **Ejemplos**, los montajes completos cargan sus elementos, el diafragma inicial y la iluminación desde infinito:
+
+- **Kepleriano:** objetivo de +200 mm y ocular de +40 mm separados 240 mm. Salida colimada e imagen invertida, con aumento angular 5×.
+- **Newtoniano:** primario parabólico de 100 mm de focal, secundario a +45° y ocular lateral de 25 mm.
+- **Ritchey–Chrétien:** modelo de 200 mm a f/24. Dos espejos hiperbólicos y foco a unos 125 mm detrás del primario perforado.
+- **Teleobjetivo fotográfico:** grupos delgados de +100 y −50 mm separados 70 mm. Focal efectiva de 250 mm y plano del sensor a 75 mm detrás del grupo trasero para un objeto en infinito.
+
 En **Origen de los rayos** puedes conservar el objeto finito o elegir:
 
 - **Paralelos desde infinito:** haz axial con alturas distribuidas por la abertura admitida. La imagen paraxial está en F′; en sistemas afocales permanece en infinito. Se recalculan el stop y las pupilas para esta iluminación, sin simular el infinito mediante una distancia muy grande.
