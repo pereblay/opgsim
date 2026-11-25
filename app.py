@@ -340,6 +340,14 @@ else:
     st.caption('Trayectorias reales en continuo; prolongaciones virtuales en discontinuo.')
 fig = base_figure()
 fig.update_layout(height=520)
+exit_y_bounds = None
+if spatial:
+    # Use the plotted profiles, including tilted elements and all mirror branches.
+    bench_x = np.concatenate([np.asarray(trace.x) for trace in fig.data])
+    bench_y = np.concatenate([np.asarray(trace.y) for trace in fig.data])
+    start_x = min(start_x, np.nanmin(bench_x)-origin-extension)
+    end = max(end, np.nanmax(bench_x)-origin+extension)
+    exit_y_bounds = (np.nanmin(bench_y)-extension, np.nanmax(bench_y)+extension)
 records, interaction_records, exact_images = [], [], []
 for group, h in enumerate(sorted(set([bottom, 0., top])) if finite_source else [0.]):
     if spatial and finite_source:
@@ -382,7 +390,7 @@ for group, h in enumerate(sorted(set([bottom, 0., top])) if finite_source else [
     for label, h, slope in launches:
         theta = math.atan(slope)
         ray = (trace_exact(boundaries, obj, h, theta, start_x, end,
-                           exit_length=extension if spatial else None)
+                           exit_y_bounds=exit_y_bounds)
                if exact else trace_gaussian(result, obj, h, slope, start_x, end))
         group_rays.append(ray)
         ray_color = colors[group]

@@ -189,6 +189,32 @@ class AppTests(unittest.TestCase):
                          if 'Focal efectiva (mm)' in item.value.columns)
             self.assertEqual(table['Focal efectiva (mm)'].tolist()[1:3], ['35.000 mm', '-25.000 mm'])
 
+    def test_folded_telescope_plot_includes_the_focus_behind_the_primary(self):
+        from base64 import b64decode
+        from dataclasses import asdict
+        import numpy as np
+        from optics import Element
+
+        app = AppTest.from_file(APP, default_timeout=30).run()
+        app.session_state['elements'] = [
+            asdict(Element(name='Primario', kind='Espejo hiperbólico cóncavo con abertura central',
+                           position=408.8393, aperture=200., central_opening=50., r1=920.,
+                           conic_constant=-1.0022985)),
+            asdict(Element(name='Secundario', kind='Espejo hiperbólico convexo',
+                           position=0., aperture=23.417, r1=113.1667, conic_constant=-1.496,
+                           invert_mirror=True)),
+        ]
+        next(w for w in app.number_input if w.label == 'Diámetro de abertura inicial (mm)').set_value(200.)
+        next(r for r in app.radio if r.label == 'Origen de los rayos').set_value('Paralelos desde infinito').run()
+        self.assertFalse(app.exception)
+        self.assertFalse(app.error)
+        traces = json.loads(app.get('plotly_chart')[1].proto.spec)['data']
+        ray = next(trace for trace in traces if trace.get('name') == 'y=50 · Paralelo 4')
+        coords = [np.frombuffer(b64decode(ray[axis]['bdata']), dtype=ray[axis]['dtype']) for axis in ('x', 'y')]
+        x, y = coords
+        self.assertGreater(x[-1], 533.84)
+        self.assertLess(y[-1]*y[-2], 0.)
+
     def test_rotated_mirror_and_off_axis_ocular(self):
         from dataclasses import asdict
         from optics import Element

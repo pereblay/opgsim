@@ -222,7 +222,7 @@ def physical_paraxial(elements, diameter, wavelength, object_x, thin_lens=False,
     return result
 
 
-def trace_exact(boundaries, object_x, height, angle, xmin, xmax, max_events=100, *, exit_length=None):
+def trace_exact(boundaries, object_x, height, angle, xmin, xmax, max_events=100, *, exit_y_bounds=None):
     point = np.array([object_x, height], dtype=float)
     direction = np.array([math.cos(angle), math.sin(angle)])
     points, events = [point.copy()], []
@@ -288,8 +288,12 @@ def trace_exact(boundaries, object_x, height, angle, xmin, xmax, max_events=100,
         blocked = 'Límite de interacciones (posible rayo atrapado)'
     exit_point, exit_direction = point.copy(), direction.copy()
     if blocked is None:
-        if exit_length is not None:
-            length = exit_length
+        if exit_y_bounds is not None:
+            # Clip the outgoing line to the visible bench in its actual direction.
+            limits = np.array([xmax if direction[0] > 0 else xmin,
+                               exit_y_bounds[1 if direction[1] > 0 else 0]])
+            moving = np.abs(direction) > 1e-10
+            length = float(np.min((limits-point)[moving]/direction[moving]))
         elif abs(direction[0]) > 1e-10:
             target_x = xmax if direction[0] > 0 else xmin
             length = (target_x-point[0])/direction[0]
