@@ -8,24 +8,30 @@ from dataclasses import asdict
 import numpy as np
 import plotly.graph_objects as go
 import streamlit as st
-from presets import PRESETS
 from branding import render_brand_header
-from optics import Element, TYPES, CONIC_MIRRORS, HYPERBOLIC_MIRRORS, sag, admitted_interval, EPS, build, matrix_walkthrough
-from raytrace import geometry, physical_paraxial, trace_exact, focal_points, trace_gaussian, axial_source_bundle, exact_axial_aperture_scale, exact_admitted_interval, exact_chief_slope, ray_image, exact_back_focus, construction_rays
 
 st.set_page_config(page_title='VIU · Banco óptico · OPGSim', page_icon='🔬', layout='wide')
-render_brand_header()
-# Cloud can rerun the entrypoint while keeping imported modules in memory.
-# Refresh the portal and its assessment code when any of their sources change.
-portal_revision = hashlib.sha256(b''.join(Path(__file__).with_name(name).read_bytes()
-    for name in ('exercise_portal.py', 'exercise_canvas.js', 'exercises.py'))).hexdigest()
-portal_module = sys.modules.get('exercise_portal')
-if portal_module is not None and getattr(portal_module, '_loaded_revision', None) != portal_revision:
-    if 'exercises' in sys.modules:
-        importlib.reload(sys.modules['exercises'])
-    importlib.reload(portal_module)
+
+# Streamlit can rerun app.py after a deploy while modules from the previous
+# revision remain in sys.modules. Refresh them before importing any symbols.
+module_names = ('optics', 'raytrace', 'presets', 'exercises', 'exercise_portal')
+source_names = [f'{name}.py' for name in module_names] + ['exercise_canvas.js']
+revision = hashlib.sha256(b''.join(Path(__file__).with_name(name).read_bytes()
+                                  for name in source_names)).hexdigest()
+optics_module = sys.modules.get('optics')
+if optics_module is not None and getattr(optics_module, '_opgsim_revision', None) != revision:
+    importlib.invalidate_caches()
+    for name in module_names:
+        if name in sys.modules:
+            importlib.reload(sys.modules[name])
+
+from presets import PRESETS
+from optics import Element, TYPES, CONIC_MIRRORS, HYPERBOLIC_MIRRORS, sag, admitted_interval, EPS, build, matrix_walkthrough
+from raytrace import geometry, physical_paraxial, trace_exact, focal_points, trace_gaussian, axial_source_bundle, exact_axial_aperture_scale, exact_admitted_interval, exact_chief_slope, ray_image, exact_back_focus, construction_rays
 from exercise_portal import render_exercise_portal
-sys.modules['exercise_portal']._loaded_revision = portal_revision
+
+sys.modules['optics']._opgsim_revision = revision
+render_brand_header()
 if st.session_state.get('portal') == 'exercises':
     render_exercise_portal()
     st.stop()

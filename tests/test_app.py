@@ -12,6 +12,22 @@ class AppTests(unittest.TestCase):
         # rather than reusing a renderer registered in a previous test runtime.
         sys.modules.pop('exercise_portal', None)
 
+    def test_startup_refreshes_optics_cached_before_the_deployment(self):
+        from unittest.mock import patch
+        import optics
+
+        with patch.object(optics, '_opgsim_revision', 'previous-release', create=True):
+            del optics.CONIC_MIRRORS
+            try:
+                app = AppTest.from_file(APP, default_timeout=30).run()
+                self.assertFalse(app.exception)
+                element_types = next(s for s in app.selectbox if s.label == 'Tipo de elemento')
+                self.assertIn('Espejo parabólico con abertura central', element_types.options)
+            finally:
+                if not hasattr(optics, 'CONIC_MIRRORS'):
+                    from importlib import reload
+                    reload(optics)
+
     def test_presets_models_and_plot_conventions(self):
         app = AppTest.from_file(APP, default_timeout=30).run()
         self.assertFalse(app.exception)
