@@ -32,6 +32,32 @@ class ExactRayTests(unittest.TestCase):
             vertex_offset = x-element.position
             self.assertAlmostEqual((1+conic)*vertex_offset**2+y**2+160.*vertex_offset, 0.)
 
+    def test_scaled_ritchey_chretien_double_reflection_and_back_focus(self):
+        primary = Element(name='Primario', kind='Espejo hiperbólico cóncavo con abertura central',
+                          position=4906.072/12, r1=920., aperture=200., central_opening=50.,
+                          conic_constant=-1.0022985)
+        secondary = Element(name='Secundario', kind='Espejo hiperbólico convexo', position=0.,
+                            r1=1358./12, aperture=281./12, conic_constant=-1.496,
+                            invert_mirror=True)
+        boundaries = geometry([primary, secondary], 200., 550., aperture_x=-20.)
+        for y in (30., 50., 80., 100.):
+            ray = trace_exact(boundaries, -120., y, 0., -200., 700.)
+            self.assertIsNone(ray['blocked'])
+            reflections = [e['surface'] for e in ray['events'] if 'Reflexión' in e['event']]
+            self.assertEqual(reflections, ['Primario', 'Secundario'])
+            x, height = ray['exit_point']
+            dx, dy = ray['exit_direction']
+            self.assertAlmostEqual(x-height*dx/dy, primary.position+125., delta=.2)
+        self.assertIsNotNone(trace_exact(boundaries, -120., 0., 0., -200., 700.)['blocked'])
+
+    def test_convex_parabolic_mirror_has_a_virtual_focus(self):
+        mirror = Element(kind='Espejo parabólico convexo', position=100., r1=80.)
+        ray = self.trace([mirror], y=8.)
+        hit = next(e for e in ray['events'] if 'Reflexión' in e['event'])
+        x, y = hit['point']
+        dx, dy = hit['outgoing']
+        self.assertAlmostEqual(x-y*dx/dy, 140.)
+
     def test_central_opening_passes_rays_and_reflects_annulus_on_either_orientation(self):
         for kind in ('Espejo hiperbólico cóncavo con abertura central',
                      'Espejo parabólico con abertura central'):

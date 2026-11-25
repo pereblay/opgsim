@@ -3,8 +3,9 @@ from dataclasses import dataclass
 import math
 import numpy as np
 
-HYPERBOLIC_MIRRORS = ('Espejo hiperbólico cóncavo', 'Espejo hiperbólico cóncavo con abertura central')
-PARABOLIC_MIRRORS = ('Espejo parabólico', 'Espejo parabólico con abertura central')
+HYPERBOLIC_MIRRORS = ('Espejo hiperbólico cóncavo', 'Espejo hiperbólico cóncavo con abertura central',
+                      'Espejo hiperbólico convexo')
+PARABOLIC_MIRRORS = ('Espejo parabólico', 'Espejo parabólico con abertura central', 'Espejo parabólico convexo')
 CONIC_MIRRORS = HYPERBOLIC_MIRRORS + PARABOLIC_MIRRORS
 
 TYPES = ['Biconvexa', 'Bicóncava', 'Plano-convexa', 'Plano-cóncava', 'Convexa-plana', 'Cóncava-plana',
@@ -57,7 +58,7 @@ class Element:
     def mirror_radius(self):
         if self.kind == 'Espejo plano':
             return math.inf
-        radius = -abs(self.r1) if self.kind == 'Espejo cóncavo' or self.kind in CONIC_MIRRORS else abs(self.r1)
+        radius = abs(self.r1) if self.kind.endswith('convexo') else -abs(self.r1)
         return -radius if self.invert_mirror else radius
 
     def bank_coordinates(self, x, y):

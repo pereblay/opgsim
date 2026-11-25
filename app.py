@@ -121,8 +121,8 @@ with st.form('add', clear_on_submit=False):
             'Diámetro exterior del espejo (mm)', min_value=.01, value=new_element.aperture)
         if kind in HYPERBOLIC_MIRRORS:
             new_element.conic_constant = profile[1].number_input(
-                'Constante cónica K', max_value=-1., value=new_element.conic_constant, step=.1,
-                format='%.3f')
+                'Constante cónica K', max_value=-1., value=new_element.conic_constant, step=.0001,
+                format='%.7f')
         if new_element.has_central_opening:
             new_element.central_opening = profile[2].number_input(
                 'Diámetro de abertura central (mm)', min_value=.01, value=new_element.central_opening)
@@ -145,7 +145,7 @@ columns = {
     'height': st.column_config.NumberColumn('Posición y (mm)', required=True),
     'tilt': st.column_config.NumberColumn('Giro (°)', required=True),
     'invert_mirror': st.column_config.CheckboxColumn('Invertir cara reflectora', default=False),
-    'conic_constant': st.column_config.NumberColumn('K · espejo hiperbólico', format='%.3f'),
+    'conic_constant': st.column_config.NumberColumn('K · espejo hiperbólico', format='%.7f'),
     'central_opening': st.column_config.NumberColumn('Ø abertura central (mm)', min_value=.01),
     'aperture': st.column_config.NumberColumn('Altura / Ø (mm)', min_value=.01, required=True),
     'thickness': st.column_config.NumberColumn('Grosor (mm)', min_value=0., required=True),
