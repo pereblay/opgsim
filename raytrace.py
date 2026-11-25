@@ -43,13 +43,15 @@ class Boundary:
     finite: bool = False
     invert_mirror: bool = False
     launch_only: bool = False
+    conic: float = 0.
+    central_opening: float = 0.
 
     def intersect(self, point, direction, include_origin=False):
         minimum = -TOL if include_origin else TOL
         candidates = []
         # The mount starts at the cap edge, never at an imaginary vertex plane.
         if abs(direction[0]) > 1e-12:
-            edge_x = self.x + float(sag(self.radius, self.aperture/2))
+            edge_x = self.x + float(sag(self.radius, self.aperture/2, self.conic))
             t = (edge_x-point[0])/direction[0]
             if t > minimum:
                 q = point+t*direction
@@ -57,26 +59,31 @@ class Boundary:
                 if (not outside or not self.finite) and (self.kind == 'stop' or outside or math.isinf(self.radius)):
                     candidates.append((t, q, np.array([1., 0.]), outside))
         if self.kind != 'stop' and not math.isinf(self.radius):
-            center = np.array([self.x+self.radius, 0.])
-            # Work relative to the vertex, avoiding subtraction of R² terms.
-            delta = point-np.array([self.x, 0.])
-            b = float(np.dot(delta, direction)-self.radius*direction[0])
-            c = float(delta[0]*(delta[0]-2*self.radius)+delta[1]**2)
-            disc = b*b-c
-            if disc >= 0:
-                root = math.sqrt(disc)
-                stable_root = -b-math.copysign(root, b)
-                roots = [stable_root, c/stable_root] if stable_root != 0 else [-b]
-                for t in roots:
-                    if t <= minimum:
-                        continue
-                    q = point+t*direction
-                    # Reject the opposite hemisphere: only the selected cap exists.
-                    if abs(q[1]) <= self.aperture/2+TOL and (q[0]-center[0])*self.radius <= TOL:
-                        normal = unit(q-center)
-                        if normal[0] < 0:
-                            normal = -normal
-                        candidates.append((t, q, normal, False))
+            # Conic through the vertex: (1+K)x² + y² − 2Rx = 0 in local coordinates.
+            dx, dy = direction
+            x, y = point - np.array([self.x, 0.])
+            factor = 1+self.conic
+            a = factor*dx*dx + dy*dy
+            b = (factor*x-self.radius)*dx + y*dy
+            c = (factor*x-2*self.radius)*x + y*y
+            if abs(a) < 1e-14:
+                roots = [-c/(2*b)] if abs(b) > 1e-14 else []
+            else:
+                disc = b*b-a*c
+                roots = []
+                if disc >= 0:
+                    stable_root = -b-math.copysign(math.sqrt(disc), b)
+                    roots = [stable_root/a, c/stable_root] if stable_root != 0 else [-b/a]
+            sign = math.copysign(1., self.radius)
+            for t in roots:
+                if t <= minimum:
+                    continue
+                q = point+t*direction
+                axial_normal = sign*(self.radius-factor*(q[0]-self.x))
+                if (axial_normal >= -TOL and abs(q[1]) <= self.aperture/2+TOL
+                        and abs(q[1])+TOL >= self.central_opening/2):
+                    normal = unit([axial_normal, -sign*q[1]])
+                    candidates.append((t, q, normal, False))
         return min(candidates, key=lambda c: c[0]) if candidates else None
 
 
@@ -114,7 +121,7 @@ class PlacedSurface:
 
 
 def geometry(elements, diameter, wavelength, aperture_x=0.):
-    spatial = any(e.positioned_off_axis for e in elements)
+    spatial = any(e.requires_geometric_trace for e in elements)
     if spatial:
         build([], diameter, wavelength, aperture_x)
         for e in elements:
@@ -153,10 +160,11 @@ def geometry(elements, diameter, wavelength, aperture_x=0.):
                 boundaries.extend(Rim(extent1, extent2, sign*e.aperture/2, e.name+' · pared') for sign in [-1, 1])
         else:
             r = e.mirror_radius
-            edge = e.position+float(sag(r, e.aperture/2))
+            edge = e.position+float(sag(r, e.aperture/2, e.mirror_conic))
             extent1, extent2 = min(e.position, edge), max(e.position, edge)
             boundaries.append(Boundary(e.position, r, e.aperture, e.name, 'mirror',
-                                       invert_mirror=e.invert_mirror))
+                                       invert_mirror=e.invert_mirror, conic=e.mirror_conic,
+                                       central_opening=e.central_opening if e.has_central_opening else 0.))
         if spatial:
             angle = math.radians(e.tilt)
             c, s = math.cos(angle), math.sin(angle)
@@ -179,8 +187,8 @@ def geometry(elements, diameter, wavelength, aperture_x=0.):
 
 def physical_paraxial(elements, diameter, wavelength, object_x, thin_lens=False, aperture_x=0., fixed_as=False):
     """Gaussian reference along the axial itinerary, including return through lenses."""
-    if any(e.positioned_off_axis for e in elements):
-        raise ValueError('El cálculo paraxial matricial requiere un montaje centrado.')
+    if any(e.requires_geometric_trace for e in elements):
+        raise ValueError('El cálculo paraxial matricial requiere un montaje centrado sin espejos perforados.')
     forward = build(elements, diameter, wavelength, aperture_x, thin_lens=thin_lens)
     mirror = next((e for e in sorted(elements, key=lambda e: e.position) if e.kind.startswith('Espejo')), None)
     if mirror is None:

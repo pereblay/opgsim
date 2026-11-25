@@ -204,6 +204,20 @@ class AppTests(unittest.TestCase):
         self.assertEqual(interactions[interactions['Rayo'] == ray]['Superficie'].tolist(),
                          ['Primario', 'Secundario', 'Ocular · lente delgada'])
 
+    def test_add_perforated_hyperbolic_mirror_from_the_form(self):
+        app = AppTest.from_file(APP, default_timeout=30).run()
+        kind = 'Espejo hiperbólico cóncavo con abertura central'
+        next(s for s in app.selectbox if s.label == 'Tipo de elemento').select(kind).run()
+        next(w for w in app.checkbox if w.label == 'Invertir cara reflectora').check()
+        next(w for w in app.number_input if w.label == 'Constante cónica K').set_value(-2.5)
+        next(w for w in app.number_input if w.label == 'Diámetro de abertura central (mm)').set_value(6.)
+        next(b for b in app.button if b.label == 'Añadir elemento').click().run()
+        self.assertFalse(app.exception)
+        self.assertFalse(app.error)
+        row = app.session_state['elements'][-1]
+        self.assertEqual((row['kind'], row['conic_constant'], row['central_opening'], row['invert_mirror']),
+                         (kind, -2.5, 6., True))
+
     def test_matrix_panel_element_and_input(self):
         app = AppTest.from_file(APP, default_timeout=30).run()
         self.assertTrue(next(s for s in app.selectbox if s.label == 'Modelo de rayos').value.startswith('Exacto'))

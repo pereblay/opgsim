@@ -3,9 +3,13 @@ from dataclasses import dataclass
 import math
 import numpy as np
 
+HYPERBOLIC_MIRRORS = ('Espejo hiperbólico cóncavo', 'Espejo hiperbólico cóncavo con abertura central')
+PARABOLIC_MIRRORS = ('Espejo parabólico', 'Espejo parabólico con abertura central')
+CONIC_MIRRORS = HYPERBOLIC_MIRRORS + PARABOLIC_MIRRORS
+
 TYPES = ['Biconvexa', 'Bicóncava', 'Plano-convexa', 'Plano-cóncava', 'Convexa-plana', 'Cóncava-plana',
          'Menisco', 'Lente personalizada', 'Espejo plano', 'Espejo cóncavo',
-         'Espejo convexo', 'Diafragma', 'Lente delgada convergente', 'Lente delgada divergente']
+         'Espejo convexo', 'Diafragma', 'Lente delgada convergente', 'Lente delgada divergente', *CONIC_MIRRORS]
 EPS = 1e-10
 
 @dataclass
@@ -25,6 +29,24 @@ class Element:
     height: float = 0.0
     tilt: float = 0.0  # degrees counterclockwise in the meridional plane
     invert_mirror: bool = False
+    conic_constant: float = -2.0
+    central_opening: float = 5.0  # diameter in mm, for perforated mirrors
+
+    @property
+    def has_central_opening(self):
+        return self.kind in (HYPERBOLIC_MIRRORS[1], PARABOLIC_MIRRORS[1])
+
+    @property
+    def mirror_conic(self):
+        if self.kind in PARABOLIC_MIRRORS:
+            return -1.
+        if self.kind in HYPERBOLIC_MIRRORS:
+            return self.conic_constant
+        return 0.
+
+    @property
+    def requires_geometric_trace(self):
+        return self.positioned_off_axis or self.has_central_opening
 
     @property
     def positioned_off_axis(self):
@@ -35,7 +57,7 @@ class Element:
     def mirror_radius(self):
         if self.kind == 'Espejo plano':
             return math.inf
-        radius = -abs(self.r1) if self.kind == 'Espejo cóncavo' else abs(self.r1)
+        radius = -abs(self.r1) if self.kind == 'Espejo cóncavo' or self.kind in CONIC_MIRRORS else abs(self.r1)
         return -radius if self.invert_mirror else radius
 
     def bank_coordinates(self, x, y):
@@ -61,7 +83,7 @@ class Element:
     @property
     def clear_aperture(self):
         """Trim the spherical caps at their domain or first mutual intersection."""
-        if self.ideal_lens:
+        if self.ideal_lens or self.kind in CONIC_MIRRORS:
             return self.aperture
         radii = self.radii() if self.lens else (() if self.kind in ('Diafragma', 'Espejo plano') else (self.r1,))
         if any(math.isnan(r) or r == 0 for r in radii):
@@ -108,12 +130,12 @@ def refraction(n1, n2, radius):
     return np.array([[1., 0.], [0. if math.isinf(radius) else -(n2-n1)/radius, 1.]])
 
 
-def sag(radius, y):
+def sag(radius, y, conic=0.):
     if math.isinf(radius):
         return np.zeros_like(y)
     # Rationalized spherical sag avoids subtracting nearly equal large radii.
     y = np.asarray(y)
-    return (y/radius)*y / (1 + np.sqrt(np.maximum(0., 1 - (y/radius)**2)))
+    return (y/radius)*y / (1 + np.sqrt(np.maximum(0., 1 - (1+conic)*(y/radius)**2)))
 
 
 def build(elements, diameter, wavelength, aperture_x=0., *, thin_lens=False):
@@ -160,7 +182,13 @@ def build(elements, diameter, wavelength, aperture_x=0., *, thin_lens=False):
             if e.kind != 'Espejo plano' and e.kind.startswith('Espejo'):
                 if not math.isfinite(e.r1) or e.r1 == 0:
                     raise ValueError(f'{e.name}: radio de espejo insuficiente.')
-                power = (-2 if e.kind == 'Espejo cóncavo' else 2)/abs(e.r1)
+                if e.kind in HYPERBOLIC_MIRRORS and (
+                        not math.isfinite(e.conic_constant) or e.conic_constant >= -1):
+                    raise ValueError(f'{e.name}: la constante hiperbólica K debe ser menor que −1.')
+                if e.has_central_opening and (
+                        not math.isfinite(e.central_opening) or not 0 < e.central_opening < e.aperture):
+                    raise ValueError(f'{e.name}: el diámetro de la abertura central debe estar entre cero y el diámetro exterior.')
+                power = 2/e.mirror_radius
             surfaces.append(Surface(e.position, e.clear_aperture, np.array([[1., 0.], [power, 1.]]), e.name, 1., 'mirror' if e.kind.startswith('Espejo') else 'stop'))
             last = e.position
             if e.kind == 'Diafragma' and e.thickness > 0:

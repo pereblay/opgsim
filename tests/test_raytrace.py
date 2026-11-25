@@ -9,6 +9,48 @@ class ExactRayTests(unittest.TestCase):
     def trace(self, elements, y=0., angle=0.):
         return trace_exact(geometry(elements, 100, 550), -120, y, angle, -180, 300)
 
+    def test_parabolic_mirror_focuses_parallel_rays_from_either_face_orientation(self):
+        for inverted in (False, True):
+            sign = -1. if inverted else 1.
+            element = Element(kind='Espejo parabólico', position=100., r1=80., aperture=120.,
+                              invert_mirror=inverted)
+            bounds = geometry([element], 150., 550.)
+            for y in (10., 45., 55.):
+                ray = trace_exact(bounds, 100.-200.*sign, y, 0. if sign > 0 else math.pi, -300., 400.)
+                hit = next(event for event in ray['events'] if 'Reflexión' in event['event'])
+                x, height = hit['point']
+                dx, dy = hit['outgoing']
+                self.assertAlmostEqual(x-height*dx/dy, 100.-40.*sign)
+
+    def test_hyperbolic_profile_uses_the_configured_conic_constant(self):
+        for conic in (-1.5, -3.):
+            element = Element(kind='Espejo hiperbólico cóncavo', position=100., r1=80.,
+                              aperture=80., conic_constant=conic)
+            ray = self.trace([element], y=30.)
+            hit = next(event for event in ray['events'] if 'Reflexión' in event['event'])
+            x, y = hit['point']
+            vertex_offset = x-element.position
+            self.assertAlmostEqual((1+conic)*vertex_offset**2+y**2+160.*vertex_offset, 0.)
+
+    def test_central_opening_passes_rays_and_reflects_annulus_on_either_orientation(self):
+        for kind in ('Espejo hiperbólico cóncavo con abertura central',
+                     'Espejo parabólico con abertura central'):
+            for inverted in (False, True):
+                sign = -1. if inverted else 1.
+                mirror = Element(name='Anular', kind=kind, position=100., r1=80., aperture=40.,
+                                 central_opening=12., invert_mirror=inverted)
+                downstream = Element(name='Detector', kind='Lente delgada convergente',
+                                     position=100.+80.*sign)
+                bounds = geometry([mirror, downstream], 100., 550., aperture_x=-300.)
+                launch_x = 100.-100.*sign
+                angle = 0. if sign > 0 else math.pi
+                center = trace_exact(bounds, launch_x, 0., angle, -400., 400.)
+                rim = trace_exact(bounds, launch_x, 10., angle, -400., 400.)
+                self.assertIn('Detector · lente delgada', [e['surface'] for e in center['events']])
+                self.assertFalse(any(e['surface'] == 'Anular' for e in center['events']))
+                self.assertTrue(any(e['surface'] == 'Anular' and 'Reflexión' in e['event']
+                                    for e in rim['events']))
+
     def test_tilted_glass_uses_rotated_normals_on_both_faces(self):
         plate = Element(kind='Lente personalizada', position=20., tilt=30., aperture=20.,
                         r1=math.inf, r2=math.inf, thickness=4., index=1.5)

@@ -10,7 +10,7 @@ import plotly.graph_objects as go
 import streamlit as st
 from presets import PRESETS
 from branding import render_brand_header
-from optics import Element, TYPES, sag, admitted_interval, EPS, build, matrix_walkthrough
+from optics import Element, TYPES, CONIC_MIRRORS, HYPERBOLIC_MIRRORS, sag, admitted_interval, EPS, build, matrix_walkthrough
 from raytrace import geometry, physical_paraxial, trace_exact, focal_points, trace_gaussian, axial_source_bundle, exact_axial_aperture_scale, exact_admitted_interval, exact_chief_slope, ray_image, exact_back_focus, construction_rays
 
 st.set_page_config(page_title='VIU · Banco óptico · OPGSim', page_icon='🔬', layout='wide')
@@ -90,8 +90,8 @@ with st.form('add', clear_on_submit=False):
         defaults = ()
     elif new_element.lens:
         defaults = new_element.radii()
-    elif kind in ('Espejo cóncavo', 'Espejo convexo'):
-        defaults = (-abs(new_element.r1) if kind == 'Espejo cóncavo' else abs(new_element.r1),)
+    elif kind in ('Espejo cóncavo', 'Espejo convexo', *CONIC_MIRRORS):
+        defaults = (new_element.mirror_radius,)
     else:
         defaults = ()
     for side, radius in enumerate(defaults, 1):
@@ -109,10 +109,25 @@ with st.form('add', clear_on_submit=False):
     if kind.startswith('Espejo'):
         new_element.invert_mirror = pose[2].checkbox('Invertir cara reflectora',
             help='Activa la cara hacia +x local en lugar de la cara hacia −x local.')
+    if kind in CONIC_MIRRORS:
+        profile = st.columns(3)
+        new_element.aperture = profile[0].number_input(
+            'Diámetro exterior del espejo (mm)', min_value=.01, value=new_element.aperture)
+        if kind in HYPERBOLIC_MIRRORS:
+            new_element.conic_constant = profile[1].number_input(
+                'Constante cónica K', max_value=-1., value=new_element.conic_constant, step=.1,
+                format='%.3f')
+        if new_element.has_central_opening:
+            new_element.central_opening = profile[2].number_input(
+                'Diámetro de abertura central (mm)', min_value=.01, value=new_element.central_opening)
     submitted = st.form_submit_button('Añadir elemento')
     if submitted:
         if any(getattr(new_element, f'r{i}') == 0 for i, r in enumerate(defaults, 1) if math.isfinite(r)):
             st.error('El radio de una cara curva debe ser distinto de cero.')
+        elif kind in HYPERBOLIC_MIRRORS and new_element.conic_constant >= -1.:
+            st.error('La constante hiperbólica K debe ser menor que −1.')
+        elif new_element.has_central_opening and new_element.central_opening >= new_element.aperture:
+            st.error('La abertura central debe ser menor que el diámetro exterior.')
         else:
             st.session_state.elements.append(asdict(new_element))
             st.session_state.version += 1
@@ -124,6 +139,8 @@ columns = {
     'height': st.column_config.NumberColumn('Posición y (mm)', required=True),
     'tilt': st.column_config.NumberColumn('Giro (°)', required=True),
     'invert_mirror': st.column_config.CheckboxColumn('Invertir cara reflectora', default=False),
+    'conic_constant': st.column_config.NumberColumn('K · espejo hiperbólico', format='%.3f'),
+    'central_opening': st.column_config.NumberColumn('Ø abertura central (mm)', min_value=.01),
     'aperture': st.column_config.NumberColumn('Altura / Ø (mm)', min_value=.01, required=True),
     'thickness': st.column_config.NumberColumn('Grosor (mm)', min_value=0., required=True),
     'index': st.column_config.NumberColumn('n a 550 nm', min_value=1., required=True, format='%.4f'),
@@ -132,7 +149,8 @@ columns = {
     'focal_length': st.column_config.NumberColumn('Focal |f′| (mm) · solo lente delgada', min_value=.01),
     'dispersion': st.column_config.NumberColumn('Cauchy B (µm²)', min_value=0., required=True, format='%.5f'),
 }
-pose_defaults = dict(height=0., tilt=0., invert_mirror=False, focal_length=Element.focal_length)
+pose_defaults = dict(height=0., tilt=0., invert_mirror=False, focal_length=Element.focal_length,
+                     conic_constant=Element.conic_constant, central_opening=Element.central_opening)
 element_rows = [dict(row, **{name: row.get(name, value) for name, value in pose_defaults.items()})
                 for row in st.session_state.elements]
 edited = st.data_editor(element_rows, column_config=columns, num_rows='fixed', hide_index=True, width="stretch", key=f'editor_{st.session_state.version}')
@@ -149,7 +167,7 @@ with st.expander('Convenciones, índices y límites del modelo'):
     st.markdown("""- **Modo paraxial:** aplica y₂ = y₁ + t·u y n₂u₂ = n₁u₁ − y·(n₂−n₁)/R en los planos de vértice. En aire, los puntos nodales coinciden con H/H′: el rayo nodal conserva su ángulo de entrada/salida, pero puede desplazarse lateralmente en una lente gruesa.
 - **Lente delgada:** concentra la potencia de cada lente en un único plano en su posición x, con el diámetro indicado y sin propagación interna. Los espejos se tratan paraxialmente en su vértice.
 - **Elementos de lente delgada ideal:** se definen por el módulo de su focal imagen. El tipo convergente usa f′ positiva y el divergente f′ negativa. Su plano ideal se aplica en todos los modelos de rayos.
-- **Modo exacto:** intersecciones con las superficies esféricas, ley vectorial de Snell y reflexión especular. La cara activa del espejo refleja toda la luz y su reverso es opaco. El trazado busca la siguiente superficie en la dirección real, incluso al regresar a través de lentes anteriores.
+- **Modo exacto:** intersecciones con superficies esféricas y cónicas, ley vectorial de Snell y reflexión especular. La cara activa del espejo refleja toda la luz y su reverso es opaco. El trazado busca la siguiente superficie en la dirección real, incluso al regresar a través de lentes anteriores.
 - **Índice por defecto: 1.** Si ambos medios tienen igual índice, no hay desviación; tampoco la hay en incidencia normal. Los ejemplos de lentes usan n = 1,5. La dispersión opcional sigue n(λ) = n(550 nm) + B·[1/λ² − 1/0,55²], con λ en µm.
 - **Radios:** el signo es positivo si el centro de curvatura está a la derecha. Los tipos predefinidos asignan los signos; «Lente personalizada» conserva los introducidos. Los radios se aplican en el sistema local de cada elemento. Invertir un espejo cambia su lado activo y voltea su perfil curvo.
 - **Aberturas y bordes:** las monturas son opacas fuera de la abertura útil; también se interceptan los bordes laterales de lentes y diafragmas. Las superficies deben estar separadas físicamente.
@@ -166,13 +184,13 @@ try:
     if finite_source and obj >= 0:
         raise ValueError('Sitúa el objeto a la izquierda del primer elemento y del diafragma de apertura.')
     elements = [Element(**dict(row, position=row['position']-origin)) for row in edited]
-    spatial = any(e.positioned_off_axis for e in elements)
+    spatial = any(e.requires_geometric_trace for e in elements)
     if spatial:
         if not exact:
-            st.info('El montaje girado, desplazado o con cara reflectora invertida usa el trazado exacto.')
+            st.info('El montaje girado, desplazado, con cara reflectora invertida o con espejo perforado usa el trazado exacto.')
         exact, thin_lens = True, False
         if source_mode == 'Desde el foco F':
-            st.info('El foco axial del conjunto requiere un banco centrado. Se usa un haz paralelo desde infinito.')
+            st.info('El foco axial del conjunto requiere un banco centrado sin espejos perforados. Se usa un haz paralelo desde infinito.')
             source_mode = 'Paralelos desde infinito'
         boundaries = geometry(elements, diameter, wavelength, aperture_x)
         foci = []
@@ -263,7 +281,11 @@ def base_figure():
                 aperture(e.position+e.thickness, e.aperture, e.name)
         else:
             r = e.mirror_radius
-            mirror_x = np.full_like(y, e.position) if thin_lens else e.position+sag(r, y)
+            if e.has_central_opening:
+                edge = e.clear_aperture/2
+                hole = e.central_opening/2
+                y = np.r_[np.linspace(-edge, -hole, 501), np.nan, np.linspace(hole, edge, 501)]
+            mirror_x = np.full_like(y, e.position) if thin_lens else e.position+sag(r, y, e.mirror_conic)
             if spatial:
                 backing = -1. if e.invert_mirror else 1.
                 fig.add_trace(go.Scatter(x=mirror_x+origin+backing, y=y, mode='lines',
@@ -307,7 +329,7 @@ st.subheader('2 · Disposición de los elementos')
 st.plotly_chart(base_figure(), width="stretch")
 st.subheader('3 · Trazado')
 if spatial:
-    st.caption('Montaje fuera de eje. El haz se muestrea en la abertura inicial; las cruces indican dónde se bloquea un rayo.')
+    st.caption('El haz se muestrea en la abertura inicial; las cruces indican dónde se bloquea un rayo.')
 else:
     st.caption('Trayectorias reales en continuo; prolongaciones virtuales en discontinuo.')
 fig = base_figure()
@@ -404,7 +426,7 @@ def download_configuration():
 
 if spatial:
     st.plotly_chart(fig, width="stretch")
-    st.caption('La matriz ABCD y los focos gaussianos del banco se calculan para sistemas centrados.')
+    st.caption('La matriz ABCD y los focos gaussianos del banco se calculan para sistemas centrados sin espejos perforados.')
     st.dataframe(records, hide_index=True, width="stretch")
     st.dataframe(interaction_records, hide_index=True, width="stretch")
     download_configuration()
