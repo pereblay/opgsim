@@ -39,6 +39,7 @@ class Boundary:
     kind: str = 'refraction'
     n_left: float = 1.
     n_right: float = 1.
+    focal: float = math.inf
 
     def intersect(self, point, direction, include_origin=False):
         minimum = -TOL if include_origin else TOL
@@ -102,7 +103,11 @@ def geometry(elements, diameter, wavelength, aperture_x=0.):
     last_extent = -math.inf
     for original in sorted(elements, key=lambda e: e.position):
         e = replace(original, aperture=original.clear_aperture)
-        if e.lens:
+        if e.ideal_lens:
+            extent1 = extent2 = e.position
+            boundaries.append(Boundary(e.position, math.inf, e.aperture, e.name+' · lente delgada',
+                                       kind='thin_lens', focal=e.ideal_focal))
+        elif e.lens:
             r1, r2 = e.radii()
             n = e.n(wavelength)
             edge1 = e.position+float(sag(r1, e.aperture/2))
@@ -133,22 +138,7 @@ def geometry(elements, diameter, wavelength, aperture_x=0.):
 
 def physical_paraxial(elements, diameter, wavelength, object_x, thin_lens=False, aperture_x=0., fixed_as=False):
     """Gaussian reference along the axial itinerary, including return through lenses."""
-    forward = build(elements, diameter, wavelength, aperture_x)
-    if thin_lens:
-        # Collapse both refractions into one ideal plane, without glass translation.
-        forward = build(elements, diameter, wavelength)
-        collapsed = [replace(forward[0], x=aperture_x)]
-        i = 1
-        for e in sorted(elements, key=lambda e: e.position):
-            if e.lens:
-                collapsed.append(Surface(e.position, e.aperture,
-                    forward[i+1].matrix @ forward[i].matrix,
-                    e.name+' · lente delgada', 1.))
-                i += 2
-            else:
-                collapsed.append(forward[i])
-                i += 1
-        forward = sorted(collapsed, key=lambda s: s.x)
+    forward = build(elements, diameter, wavelength, aperture_x, thin_lens=thin_lens)
     mirror = next((e for e in sorted(elements, key=lambda e: e.position) if e.kind.startswith('Espejo')), None)
     if mirror is None:
         path = forward
@@ -210,6 +200,10 @@ def trace_exact(boundaries, object_x, height, angle, xmin, xmax, max_events=100)
         elif boundary.kind == 'mirror':
             direction = reflect(direction, normal)
             event = 'Reflexión (100 %)'
+        elif boundary.kind == 'thin_lens':
+            slope = direction[1]/abs(direction[0]) - q[1]/boundary.focal
+            direction = unit([math.copysign(1., direction[0]), slope])
+            event = 'Lente delgada'
         elif boundary.kind == 'refraction':
             target = boundary.n_right if np.dot(direction, normal) > 0 else boundary.n_left
             direction, tir = refract(direction, normal, n, target)
@@ -242,17 +236,17 @@ def trace_exact(boundaries, object_x, height, angle, xmin, xmax, max_events=100)
                 exit_point=exit_point, exit_direction=exit_direction)
 
 
-def focal_points(elements, diameter, wavelength, object_x, aperture_x=0.):
+def focal_points(elements, diameter, wavelength, object_x, aperture_x=0., *, thin_lens=False):
     """Isolated-element focal positions plus combined-system focal positions."""
     rows = []
     for i, element in enumerate(sorted(elements, key=lambda e: e.position), 1):
         if element.kind == 'Diafragma':
             continue
-        r = physical_paraxial([element], diameter, wavelength, object_x, aperture_x=aperture_x)
+        r = physical_paraxial([element], diameter, wavelength, object_x, aperture_x=aperture_x, thin_lens=thin_lens)
         rows.append(dict(name=element.name, label=f'F{i}', label_prime=f'F{i}′',
                          focal=r['focal'], front=r['front_focus'],
                          back=None if r['back_focus'] is None else r['output_x']+r['output_direction']*r['back_focus']))
-    r = physical_paraxial(elements, diameter, wavelength, object_x, aperture_x=aperture_x)
+    r = physical_paraxial(elements, diameter, wavelength, object_x, aperture_x=aperture_x, thin_lens=thin_lens)
     rows.append(dict(name='Sistema completo', label='F', label_prime='F′', focal=r['focal'],
                      front=r['front_focus'], back=None if r['back_focus'] is None else r['output_x']+r['output_direction']*r['back_focus']))
     return rows

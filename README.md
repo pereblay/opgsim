@@ -30,6 +30,10 @@ Ambas opciones usan el número de rayos del haz y funcionan con los dos modelos.
 
 El modelo inicial es **Exacto · Snell y reflexión**: los cambios de dirección ocurren en las intersecciones con las superficies reales. El modo paraxial permanece disponible para comparar y actúa en los planos de vértice. Las monturas y los bordes pueden bloquear rayos; esos bloqueos no son refracciones.
 
+El modelo **Paraxial · lente delgada** concentra la potencia en un solo plano por lente, en su posición x. Usa el diámetro indicado y omite el grosor al calcular las trayectorias, las focales y la matriz. Por ejemplo, dos biconvexas de índice 1,5 y radios ±50 mm y ±20 mm, separadas 70 mm, dan salida paralela en este modelo al elegir **Paralelos desde infinito**.
+
+En «Tipo de elemento» también puedes añadir una **Lente delgada convergente** o **Lente delgada divergente** e introducir el módulo de su focal imagen. El tipo determina el signo de f′. Estas lentes ideales ocupan un único plano y se pueden combinar con lentes gruesas en cualquiera de los modelos.
+
 El apartado **Equivalente matricial del sistema** permite seleccionar el recorrido completo o un elemento aislado, introducir altura y ángulo, y consultar la matriz ABCD, el vector de salida y las matrices de cada paso. Usa `(y, θ)` y convierte desde el estado interno `(y, nθ)`. La altura transversal se llama y para no confundirla con la posición longitudinal x. Los ángulos de retorno siguen el sentido local de propagación; las matrices no incluyen las aberraciones del trazado exacto.
 
 El índice de nuevos elementos es 1 por petición: en aire no produce refracción. Los ejemplos usan 1,5. Los radios predefinidos tienen sus signos asignados por la forma; el tipo personalizado conserva los signos introducidos. El menisco puede ser convergente o divergente según los radios.

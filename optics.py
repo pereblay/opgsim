@@ -5,7 +5,7 @@ import numpy as np
 
 TYPES = ['Biconvexa', 'Bicóncava', 'Plano-convexa', 'Plano-cóncava', 'Convexa-plana', 'Cóncava-plana',
          'Menisco', 'Lente personalizada', 'Espejo plano', 'Espejo cóncavo',
-         'Espejo convexo', 'Diafragma']
+         'Espejo convexo', 'Diafragma', 'Lente delgada convergente', 'Lente delgada divergente']
 EPS = 1e-10
 
 @dataclass
@@ -20,6 +20,16 @@ class Element:
     r2: float = -50.0
     dispersion: float = 0.0  # Cauchy B, µm²; n is specified at 550 nm
 
+    focal_length: float = 50.0  # positive magnitude in mm, for ideal lenses
+
+    @property
+    def ideal_lens(self):
+        return self.kind in ('Lente delgada convergente', 'Lente delgada divergente')
+
+    @property
+    def ideal_focal(self):
+        return -self.focal_length if self.kind == 'Lente delgada divergente' else self.focal_length
+
     def radii(self):
         a, b = abs(self.r1), abs(self.r2)
         return {'Biconvexa': (a, -b), 'Bicóncava': (-a, b),
@@ -30,6 +40,8 @@ class Element:
     @property
     def clear_aperture(self):
         """Trim the spherical caps at their domain or first mutual intersection."""
+        if self.ideal_lens:
+            return self.aperture
         radii = self.radii() if self.lens else (() if self.kind in ('Diafragma', 'Espejo plano') else (self.r1,))
         if any(math.isnan(r) or r == 0 for r in radii):
             raise ValueError(f'{self.name}: los radios deben ser distintos de cero.')
@@ -83,7 +95,7 @@ def sag(radius, y):
     return (y/radius)*y / (1 + np.sqrt(np.maximum(0., 1 - (y/radius)**2)))
 
 
-def build(elements, diameter, wavelength, aperture_x=0.):
+def build(elements, diameter, wavelength, aperture_x=0., *, thin_lens=False):
     if not math.isfinite(diameter) or diameter <= 0:
         raise ValueError('La abertura inicial debe ser positiva.')
     if not math.isfinite(wavelength) or wavelength <= 0:
@@ -98,15 +110,30 @@ def build(elements, diameter, wavelength, aperture_x=0.):
             raise ValueError(f'{e.name}: hay valores no finitos.')
         if e.kind not in TYPES or e.position < last or e.aperture <= 0 or e.thickness < 0:
             raise ValueError(f'{e.name}: tipo inválido, abertura no positiva, posición negativa o elementos solapados.')
-        if e.lens:
+        if e.ideal_lens:
+            if not math.isfinite(e.focal_length) or e.focal_length <= 0:
+                raise ValueError(f'{e.name}: el módulo de la focal debe ser positivo y finito.')
+            matrix = np.array([[1., 0.], [-1./e.ideal_focal, 1.]])
+            surfaces.append(Surface(e.position, e.aperture, matrix, e.name+' · lente delgada', 1.))
+            last = e.position
+        elif e.lens:
             n = e.n(wavelength)
             if n < 1 or e.index < 1:
                 raise ValueError(f'{e.name}: el índice debe ser ≥ 1 también a la longitud de onda elegida.')
             r1, r2 = e.radii()
-            aperture = e.clear_aperture
-            surfaces += [Surface(e.position, aperture, refraction(1, n, r1), e.name+' · cara 1', n),
-                         Surface(e.position+e.thickness, aperture, refraction(n, 1, r2), e.name+' · cara 2', 1.)]
-            last = e.position + e.thickness
+            if any(math.isnan(r) or r == 0 for r in (r1, r2)):
+                raise ValueError(f'{e.name}: los radios deben ser distintos de cero.')
+            front = refraction(1, n, r1)
+            back = refraction(n, 1, r2)
+            if thin_lens:
+                surfaces.append(Surface(e.position, e.aperture, back @ front,
+                                        e.name+' · lente delgada', 1.))
+                last = e.position
+            else:
+                aperture = e.clear_aperture
+                surfaces += [Surface(e.position, aperture, front, e.name+' · cara 1', n),
+                             Surface(e.position+e.thickness, aperture, back, e.name+' · cara 2', 1.)]
+                last = e.position + e.thickness
         else:
             power = 0.
             if e.kind != 'Espejo plano' and e.kind.startswith('Espejo'):

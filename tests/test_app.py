@@ -133,6 +133,46 @@ class AppTests(unittest.TestCase):
         next(r for r in app.radio if r.label == 'Origen de los rayos').set_value('Objeto finito').run()
         self.assertEqual(len(app.get('plotly_chart')), 2)
 
+    def test_thin_lens_mode_collimates_the_two_lens_example(self):
+        app = AppTest.from_file(APP, default_timeout=30).run()
+        first = dict(app.session_state['elements'][0])
+        second = dict(first, name='E2', position=70., r1=20., r2=-20.)
+        app.session_state['elements'] = [first, second]
+        next(r for r in app.radio if r.label == 'Origen de los rayos').set_value('Paralelos desde infinito')
+        next(s for s in app.selectbox if s.label == 'Modelo de rayos').select('Paraxial · lente delgada').run()
+        self.assertFalse(app.exception)
+        self.assertFalse(app.error)
+        self.assertTrue(any('Sistema afocal' in item.value for item in app.info))
+        plot = json.loads(app.get('plotly_chart')[1].proto.spec)
+        foci = {item['text']: item['x'] for item in plot['layout']['annotations']}
+        for label, x in {'F1': -50., 'F1′': 50., 'F2': 50., 'F2′': 90.}.items():
+            self.assertAlmostEqual(foci[label], x)
+        for name, x in [('Lente', 0.), ('E2', 70.)]:
+            trace = next(t for t in plot['data'] if t.get('name') == name)
+            self.assertEqual(trace['x'], [x, x])
+        self.assertEqual([row['thickness'] for row in app.session_state['elements']], [4., 4.])
+
+    def test_add_ideal_lenses_with_entered_focal_length(self):
+        app = AppTest.from_file(APP, default_timeout=30).run()
+        for suffix, position, focal in [('convergente', 80., 35.), ('divergente', 140., 25.)]:
+            kind = 'Lente delgada '+suffix
+            next(s for s in app.selectbox if s.label == 'Tipo de elemento').select(kind).run()
+            app.number_input(key=f'add_focal_{kind}').set_value(focal)
+            next(w for w in app.number_input if w.label == 'Posición x en el banco (mm)').set_value(position)
+            next(b for b in app.button if b.label == 'Añadir elemento').click().run()
+            self.assertFalse(app.exception)
+            self.assertFalse(app.error)
+            row = app.session_state['elements'][-1]
+            self.assertEqual((row['kind'], row['focal_length'], row['thickness']), (kind, focal, 0.))
+        for mode in ['Exacto · Snell y reflexión', 'Paraxial · aproximación matricial',
+                     'Paraxial · lente delgada']:
+            next(s for s in app.selectbox if s.label == 'Modelo de rayos').select(mode).run()
+            self.assertFalse(app.exception)
+            self.assertFalse(app.error)
+            table = next(item.value for item in app.dataframe
+                         if 'Focal efectiva (mm)' in item.value.columns)
+            self.assertEqual(table['Focal efectiva (mm)'].tolist()[1:3], ['35.000 mm', '-25.000 mm'])
+
     def test_matrix_panel_element_and_input(self):
         app = AppTest.from_file(APP, default_timeout=30).run()
         self.assertTrue(next(s for s in app.selectbox if s.label == 'Modelo de rayos').value.startswith('Exacto'))
@@ -194,6 +234,7 @@ class AppTests(unittest.TestCase):
         names = [t.get('name', '') for t in json.loads(app.get('plotly_chart')[1].proto.spec)['data']]
         self.assertIn('y=0 · Principal · centro del stop / Paralelo al eje / Rayo focal · dirigido hacia F', names)
         next(w for w in app.number_input if w.label == 'Altura total del objeto (mm)').set_value(5.)
+        next(s for s in app.selectbox if s.label == 'Modelo de rayos').select('Exacto · Snell y reflexión')
         next(w for w in app.multiselect if w.label == 'Rayos que se dibujan').set_value(['Haz']).run()
         self.assertFalse(app.exception)
         plot = json.loads(app.get('plotly_chart')[1].proto.spec)

@@ -57,8 +57,9 @@ with st.sidebar:
     wavelength = st.slider('Longitud de onda (nm)', 380, 780, 550)
     auto_as = st.checkbox('Estimar automáticamente el AS', value=True, key='auto_as', help='Desmarca para usar como AS el diafragma definido por la posición y el diámetro de esta barra lateral.')
     st.header('Trazado')
-    tracing_mode = st.selectbox('Modelo de rayos', ['Paraxial · aproximación matricial', 'Exacto · Snell y reflexión'], index=1)
+    tracing_mode = st.selectbox('Modelo de rayos', ['Paraxial · aproximación matricial', 'Exacto · Snell y reflexión', 'Paraxial · lente delgada'], index=1)
     exact = tracing_mode.startswith('Exacto')
+    thin_lens = tracing_mode == 'Paraxial · lente delgada'
     construction_families = ['Principal y marginales', 'Paralelo al eje', 'Rayo focal']
     ray_families = st.multiselect('Rayos que se dibujan', [*construction_families, 'Haz'],
                                  default=construction_families, disabled=not finite_source)
@@ -81,7 +82,13 @@ new_element = Element(name=f'E{len(st.session_state.elements)+1}', kind=kind)
 with st.form('add', clear_on_submit=False):
     fields = st.columns(3)
     new_element.position = fields[0].number_input('Posición x en el banco (mm)', value=80., step=10.)
-    if new_element.lens:
+    if new_element.ideal_lens:
+        new_element.thickness = 0.
+        new_element.focal_length = fields[1].number_input(
+            'Módulo de la focal |f′| (mm)', min_value=.01, value=new_element.focal_length,
+            step=1., key=f'add_focal_{kind}')
+        defaults = ()
+    elif new_element.lens:
         defaults = new_element.radii()
     elif kind in ('Espejo cóncavo', 'Espejo convexo'):
         defaults = (-abs(new_element.r1) if kind == 'Espejo cóncavo' else abs(new_element.r1),)
@@ -113,9 +120,11 @@ columns = {
     'index': st.column_config.NumberColumn('n a 550 nm', min_value=1., required=True, format='%.4f'),
     'r1': st.column_config.NumberColumn('R₁ (mm)', required=True),
     'r2': st.column_config.NumberColumn('R₂ (mm)', required=True),
+    'focal_length': st.column_config.NumberColumn('Focal |f′| (mm) · solo lente delgada', min_value=.01),
     'dispersion': st.column_config.NumberColumn('Cauchy B (µm²)', min_value=0., required=True, format='%.5f'),
 }
-edited = st.data_editor(st.session_state.elements, column_config=columns, num_rows='fixed', hide_index=True, width="stretch", key=f'editor_{st.session_state.version}')
+element_rows = [dict(row, focal_length=row.get('focal_length', Element.focal_length)) for row in st.session_state.elements]
+edited = st.data_editor(element_rows, column_config=columns, num_rows='fixed', hide_index=True, width="stretch", key=f'editor_{st.session_state.version}')
 # The current table is the source for subsequent additions and removals.
 st.session_state.elements = edited
 if edited:
@@ -127,6 +136,8 @@ if edited:
         st.rerun()
 with st.expander('Convenciones, índices y límites del modelo'):
     st.markdown("""- **Modo paraxial:** aplica y₂ = y₁ + t·u y n₂u₂ = n₁u₁ − y·(n₂−n₁)/R en los planos de vértice. En aire, los puntos nodales coinciden con H/H′: el rayo nodal conserva su ángulo de entrada/salida, pero puede desplazarse lateralmente en una lente gruesa.
+- **Lente delgada:** concentra la potencia de cada lente en un único plano en su posición x, con el diámetro indicado y sin propagación interna. Los espejos se tratan paraxialmente en su vértice.
+- **Elementos de lente delgada ideal:** se definen por el módulo de su focal imagen. El tipo convergente usa f′ positiva y el divergente f′ negativa. Su plano ideal se aplica en todos los modelos de rayos.
 - **Modo exacto:** intersecciones con las superficies esféricas, ley vectorial de Snell y reflexión especular. Un espejo ideal refleja el 100 % del rayo. El trazado busca la siguiente superficie en la dirección real, incluso al regresar a través de lentes anteriores.
 - **Índice por defecto: 1.** Si ambos medios tienen igual índice, no hay desviación; tampoco la hay en incidencia normal. Los ejemplos de lentes usan n = 1,5. La dispersión opcional sigue n(λ) = n(550 nm) + B·[1/λ² − 1/0,55²], con λ en µm.
 - **Radios:** el signo es positivo si el centro de curvatura está a la derecha. Los tipos predefinidos asignan los signos; «Lente personalizada» conserva los introducidos. Todos los elementos están centrados en el eje y los espejos son perpendiculares a él en su vértice.
@@ -144,20 +155,21 @@ try:
     if finite_source and obj >= 0:
         raise ValueError('Sitúa el objeto a la izquierda del primer elemento y del diafragma de apertura.')
     elements = [Element(**dict(row, position=row['position']-origin)) for row in edited]
-    boundaries = geometry(elements, diameter, wavelength, aperture_x)
-    result = physical_paraxial(elements, diameter, wavelength, obj, aperture_x=aperture_x, fixed_as=not auto_as)
+    if not thin_lens:
+        boundaries = geometry(elements, diameter, wavelength, aperture_x)
+    result = physical_paraxial(elements, diameter, wavelength, obj, aperture_x=aperture_x, fixed_as=not auto_as, thin_lens=thin_lens)
     if source_mode == 'Paralelos desde infinito':
-        result = physical_paraxial(elements, diameter, wavelength, None, aperture_x=aperture_x, fixed_as=not auto_as)
+        result = physical_paraxial(elements, diameter, wavelength, None, aperture_x=aperture_x, fixed_as=not auto_as, thin_lens=thin_lens)
     elif source_mode == 'Desde el foco F':
         if result['front_focus'] is None:
             st.info('El sistema es afocal: no hay un foco F finito. Selecciona rayos paralelos desde infinito o añade potencia óptica.')
             st.stop()
-        result = physical_paraxial(elements, diameter, wavelength, result['front_focus'], aperture_x=aperture_x, fixed_as=not auto_as)
+        result = physical_paraxial(elements, diameter, wavelength, result['front_focus'], aperture_x=aperture_x, fixed_as=not auto_as, thin_lens=thin_lens)
     surfaces = result['path']
     for element in elements:
-        if element.clear_aperture < element.aperture-1e-8:
+        if not (thin_lens and element.lens) and element.clear_aperture < element.aperture-1e-8:
             st.info(f'{element.name}: altura útil corregida de {element.aperture:g} a {element.clear_aperture:.6g} mm por el cruce o el límite de sus superficies.')
-    foci = focal_points(elements, diameter, wavelength, obj, aperture_x)
+    foci = focal_points(elements, diameter, wavelength, obj, aperture_x, thin_lens=thin_lens)
     if exact:
         optical_elements = [e for e in sorted(elements, key=lambda e: e.position) if e.kind != 'Diafragma']
         for focus, subsystem in zip(foci, [[e] for e in optical_elements]+[elements]):
@@ -169,7 +181,7 @@ except (ValueError, TypeError, KeyError, ZeroDivisionError) as error:
 bottom, top = {'Por encima del eje': (0., height),
                'Por debajo del eje': (-height, 0.),
                'Centrado simétricamente': (-height/2, height/2)}[placement]
-end = max([aperture_x]+[e.position+e.thickness if e.lens or e.kind == 'Diafragma' else e.position for e in elements]) + extension
+end = max([aperture_x]+[e.position+e.thickness if (e.lens and not thin_lens and not e.ideal_lens) or e.kind == 'Diafragma' else e.position for e in elements]) + extension
 start_x = obj - extension*.25
 source_rays = None
 if not finite_source:
@@ -206,8 +218,13 @@ def base_figure():
             fig.add_trace(go.Scatter(x=[x+origin]*2, y=[sign*a, sign*(a+max(diameter*.12, 2))], mode='lines', line=dict(color='#475569', width=6), name=name, showlegend=False, hovertemplate=name+'<extra></extra>'))
     aperture(aperture_x, diameter, 'Abertura inicial')
     for e in sorted(elements, key=lambda e: e.position):
-        y = np.linspace(-e.clear_aperture/2, e.clear_aperture/2, 1001)
-        if e.lens:
+        model_aperture = e.aperture if thin_lens and e.lens else e.clear_aperture
+        y = np.linspace(-model_aperture/2, model_aperture/2, 1001)
+        if e.lens and (thin_lens or e.ideal_lens):
+            fig.add_trace(go.Scatter(x=[e.position+origin]*2, y=[y[0], y[-1]], mode='lines',
+                                     line=dict(color='#0284c7', width=4), name=e.name,
+                                     hovertemplate=e.name+' · lente delgada<extra></extra>'))
+        elif e.lens:
             r1, r2 = e.radii()
             left, right = e.position+sag(r1, y), e.position+e.thickness+sag(r2, y)
             fig.add_trace(go.Scatter(x=np.r_[left, right[::-1], left[:1]]+origin, y=np.r_[y, y[::-1], y[:1]], fill='toself', fillcolor='rgba(14,165,233,0.18)', line=dict(color='#0284c7', width=1.5), name=e.name, hovertemplate=e.name+f'<br>n = {e.n(wavelength):.5f}<extra></extra>'))
@@ -217,8 +234,9 @@ def base_figure():
                 aperture(e.position+e.thickness, e.aperture, e.name)
         else:
             r = math.inf if e.kind == 'Espejo plano' else (-abs(e.r1) if e.kind == 'Espejo cóncavo' else abs(e.r1))
-            fig.add_trace(go.Scatter(x=e.position+sag(r, y)+origin, y=y, mode='lines', line=dict(color='#64748b', width=5), name=e.name))
-        if not exact and e.lens:
+            mirror_x = np.full_like(y, e.position) if thin_lens else e.position+sag(r, y)
+            fig.add_trace(go.Scatter(x=mirror_x+origin, y=y, mode='lines', line=dict(color='#64748b', width=5), name=e.name))
+        if not exact and not thin_lens and e.lens and not e.ideal_lens:
             for vx in [e.position, e.position+e.thickness]:
                 fig.add_trace(go.Scatter(x=[vx+origin]*2, y=[-e.clear_aperture/2, e.clear_aperture/2], mode='lines', line=dict(color='#94a3b8', width=1), showlegend=False, hovertemplate='Plano de vértice paraxial<extra></extra>'))
         fig.add_annotation(x=e.position+origin, y=e.aperture/2+3, text=e.name, showarrow=False, font=dict(size=11))
@@ -349,7 +367,7 @@ st.plotly_chart(fig, width="stretch")
 if exact_images:
     st.dataframe(exact_images, hide_index=True, width='stretch')
 st.caption(('O′ se calcula con los rayos exactos dibujados (mínima dispersión transversal). O′G, FG y F′G son referencias gaussianas; la aberración puede producir distintos cruces y un radio RMS no nulo.' if exact else 'Los rayos paraxiales transmitidos desde un mismo punto concurren en O′ o en su prolongación virtual.') + ' Los elementos detrás del primer espejo no se alcanzan en este montaje centrado.')
-if any(e.lens and e.index == 1 and e.dispersion == 0 for e in elements):
+if any(e.lens and not e.ideal_lens and e.index == 1 and e.dispersion == 0 for e in elements):
     st.info('Hay lentes con n = 1, igual que el aire: sus superficies no desvían la luz. Cambia su índice para simular vidrio.')
 
 st.subheader('4 · Parámetros paraxiales del recorrido físico')
@@ -414,7 +432,7 @@ if selection == 0:
     st.caption(f'Entrada: primer plano x={origin:g} mm. Salida: x={result["output_x"]+origin:g} mm; sentido {"−x" if result["output_direction"] < 0 else "+x"}.')
 else:
     selected_element = elements[selection-1]
-    matrix_path = build([selected_element], diameter, wavelength)[1:]
+    matrix_path = build([selected_element], diameter, wavelength, thin_lens=thin_lens)[1:]
     matrix_start = selected_element.position
     st.caption('Elemento aislado: desde justo antes de su primera superficie hasta justo después de la última interacción. No incluye los espacios exteriores ni los demás elementos.')
 mi1, mi2 = st.columns(2)
@@ -439,6 +457,6 @@ with st.expander('Matrices de propagación e interacción, paso a paso'):
         st.latex('T_{'+str(i)+'}='+latex_matrix(row['propagation'])+r',\quad S_{'+str(i)+'}='+latex_matrix(row['interface']))
     st.caption('M = Sₖ Tₖ … S₂ T₂ S₁ T₁. Las desviaciones matriciales se aplican en planos de vértice; el trazado exacto de la gráfica utiliza las superficies curvas y Snell, no estas matrices.')
 
-export = dict(as_mode="automatic" if auto_as else "fixed", source_mode=source_mode, object_distance=(obj if finite_source else None), source_focus=(result['front_focus'] if source_mode == 'Desde el foco F' else None), object_height=height, placement=placement, reference_position=origin, aperture_position=aperture_position, initial_diameter=diameter, wavelength_nm=wavelength, elements=edited)
+export = dict(tracing_mode=tracing_mode, as_mode="automatic" if auto_as else "fixed", source_mode=source_mode, object_distance=(obj if finite_source else None), source_focus=(result['front_focus'] if source_mode == 'Desde el foco F' else None), object_height=height, placement=placement, reference_position=origin, aperture_position=aperture_position, initial_diameter=diameter, wavelength_nm=wavelength, elements=edited)
 st.download_button('Descargar configuración JSON', json.dumps(export, ensure_ascii=False, indent=2), 'sistema-optico.json', 'application/json')
 st.caption('Referencias: [OptiCampus · trazado de lentes delgadas](https://opticampus.opti.vision/cecourse.php?url=ray_tracing/) · [Edmund Optics · trazado paraxial](https://www.edmundoptics.com/knowledge-center/application-notes/optics/geometrical-optics-101-paraxial-ray-tracing-calculations/) · [LibreTexts · rayos de construcción](https://phys.libretexts.org/Bookshelves/University_Physics/Calculus-Based_Physics_%28Schnick%29/Volume_B%3A_Electricity_Magnetism_and_Optics/B28%3A_Thin_Lenses_-_Ray_Tracing) · [reflexión y Snell](https://www.pbr-book.org/4ed/Reflection_Models/Specular_Reflection_and_Transmission) · [matrices ABCD](https://www.rp-photonics.com/abcd_matrix.html) · [pupilas de entrada y salida](https://www.rp-photonics.com/entrance_and_exit_pupil.html)')
