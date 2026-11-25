@@ -51,7 +51,7 @@ with st.sidebar:
     source_mode = st.radio('Origen de los rayos', ['Objeto finito', 'Paralelos desde infinito', 'Desde el foco F'])
     finite_source = source_mode == 'Objeto finito'
     obj = st.number_input('Posición x del objeto en el banco (mm)', value=-120., step=10., disabled=not finite_source)
-    height = st.number_input('Altura total del objeto (mm)', min_value=0., value=0., step=1., disabled=not finite_source)
+    height = st.number_input('Altura total del objeto (mm)', min_value=0., value=5., step=1., disabled=not finite_source)
     placement = st.radio('Situación del objeto', ['Por encima del eje', 'Por debajo del eje', 'Centrado simétricamente'], disabled=not finite_source)
     diameter = st.number_input('Diámetro de abertura inicial (mm)', min_value=0.01, value=25., step=1.)
     wavelength = st.slider('Longitud de onda (nm)', 380, 780, 550)
@@ -59,7 +59,9 @@ with st.sidebar:
     st.header('Trazado')
     tracing_mode = st.selectbox('Modelo de rayos', ['Paraxial · aproximación matricial', 'Exacto · Snell y reflexión'], index=1)
     exact = tracing_mode.startswith('Exacto')
-    ray_families = st.multiselect('Rayos que se dibujan', ['Principal y marginales', 'Paralelo al eje', 'Rayo focal', 'Haz'], default=['Principal y marginales'], disabled=not finite_source)
+    construction_families = ['Principal y marginales', 'Paralelo al eje', 'Rayo focal']
+    ray_families = st.multiselect('Rayos que se dibujan', [*construction_families, 'Haz'],
+                                 default=construction_families, disabled=not finite_source)
     st.header('Visualización')
     ray_count = st.slider('Rayos del haz por punto', 3, 15, 5, step=2)
     extension = st.number_input('Extensión visible del recorrido (mm)', min_value=1., value=160., step=20.)
@@ -253,15 +255,7 @@ for group, h in enumerate(sorted(set([bottom, 0., top])) if finite_source else [
     if finite_source:
         p = result['pre'][result['stop']] @ np.array([[1., -obj], [0., 1.]])
         a, b = p[0]
-        stop_radius = surfaces[result['stop']].aperture/2
         rays = []
-        if 'Paralelo al eje' in ray_families:
-            rays.append(('Paralelo al eje', 0.))
-        if 'Rayo focal' in ray_families:
-            focal = [(label, slope) for label, slope in construction_rays(result, obj, h) if label.startswith('Por F')]
-            rays += [('Rayo focal · dirigido hacia F', slope) for _, slope in focal]
-            if not focal:
-                st.caption('No hay un rayo focal independiente: F está en infinito o coincide con el plano del objeto.')
         interval = (exact_admitted_interval(boundaries, obj, h, start_x, end) if exact
                     else admitted_interval(surfaces, obj, h))
         if 'Principal y marginales' in ray_families and interval:
@@ -270,15 +264,24 @@ for group, h in enumerate(sorted(set([bottom, 0., top])) if finite_source else [
             if chief is not None:
                 rays.append(('Principal · centro del stop', chief))
             rays += [('Marginal − · borde útil', interval[0]), ('Marginal + · borde útil', interval[1])]
+        if 'Paralelo al eje' in ray_families:
+            rays.append(('Paralelo al eje', 0.))
+        if 'Rayo focal' in ray_families:
+            focal = [(label, slope) for label, slope in construction_rays(result, obj, h) if label.startswith('Por F')]
+            rays += [('Rayo focal · dirigido hacia F', slope) for _, slope in focal]
+            if not focal and h == 0.:
+                st.caption('El rayo focal requiere un foco F finito fuera del plano del objeto.')
         if interval and 'Haz' in ray_families:
             rays += [('Marginal − · borde útil' if i == 0 else 'Marginal + · borde útil' if i == ray_count-1 else 'Haz', float(slope))
                      for i, slope in enumerate(np.linspace(*interval, ray_count))]
-        unique_rays = []
+        # Trace coincident launches once, keeping their family names in the legend.
+        unique_rays = {}
         for label, slope in rays:
-            if not any(abs(slope-old_slope) < 1e-10 for _, old_slope in unique_rays):
-                unique_rays.append((label, slope))
-        rays = unique_rays
-        launches = [(label, h, slope) for label, slope in rays]
+            matching_slope = next((u for u in unique_rays if abs(slope-u) < 1e-10), slope)
+            labels = unique_rays.setdefault(matching_slope, [])
+            if label not in labels and (label != 'Haz' or not labels):
+                labels.append(label)
+        launches = [(' / '.join(labels), h, slope) for slope, labels in unique_rays.items()]
     else:
         launches = [(f'Paralelo {i+1}' if source_mode == 'Paralelos desde infinito' else f'Desde F · {i+1}', y, u) for i, (y, u) in enumerate(source_rays)]
     group_rays = []

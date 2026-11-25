@@ -61,13 +61,13 @@ La dispersión opcional es Cauchy, anclada a 550 nm: `n(λ)=n₅₅₀+B(λ⁻²
 
 O representa el objeto; O′, la imagen gaussiana. El objeto y los rayos físicos usan líneas continuas. La imagen, su plano y las prolongaciones virtuales usan líneas discontinuas. Fᵢ/Fᵢ′ son los focos de cada elemento aislado y F/F′ los del recorrido completo. Una posición focal no es una distancia focal: la EFL se mide desde los planos principales; la BFL, desde la última superficie óptica.
 
-El rayo principal (chief) parte de un punto de campo y atraviesa el centro del stop. Cada punto mostrado del objeto (extremos y eje) emite su principal y sus dos marginales. La altura del objeto es 0 mm por defecto; se puede aumentar para ver por separado la familia del extremo y la axial. Todos los extremos de «Haz» y los marginales se calculan sobre el intervalo admitido por el modelo seleccionado, incluido el borde; continúan después de refractarse o reflejarse. Las pupilas mostradas son gaussianas.
+El rayo principal (chief) parte de un punto de campo y atraviesa el centro del stop. Cada punto mostrado del objeto (extremos y eje) emite su principal y sus dos marginales. La altura inicial del objeto es 5 mm. Con altura 0 mm el objeto queda sobre el eje. Todos los extremos de «Haz» y los marginales se calculan sobre el intervalo admitido por el modelo seleccionado, incluido el borde; continúan después de refractarse o reflejarse. Las pupilas mostradas son gaussianas.
 
 Las lentes finas (por ejemplo, grosor 0,1 mm) y los radios pequeños se aceptan sin aumentarlos artificialmente. El diámetro útil se recorta al cruce de las caras o al diámetro de la esfera, y se informa del valor corregido. Dibujo, monturas y cálculo usan esa misma abertura. Las caras que se encuentran en una arista se procesan sucesivamente para conservar ambos cambios de medio.
 
 En el taller se pueden añadir rayos auxiliares, prolongaciones virtuales discontinuas hacia atrás del último tramo y marcas manuales O′, F y F′. Las salidas divergentes se prolongan automáticamente hacia su cruce virtual usando los segmentos del alumno; este puede ajustar las prolongaciones manualmente. El criterio usa la dirección de propagación, también en espejos, y no solo el signo del ángulo. La aplicación no revela soluciones precalculadas. Para hallar un foco se trazan auxiliares incidentes paralelos, mientras que el haz desde O determina la imagen. Estas construcciones se conservan, se pueden borrar y no cuentan como interacciones de los rayos evaluados.
 
-El banco permite seleccionar también «Paralelo al eje» y «Rayo focal», además del chief, los marginales y el haz. Si O está sobre el eje, algunos de estos rayos coinciden.
+El banco muestra inicialmente el principal, los marginales, el paralelo al eje y el focal. El haz se puede añadir en el selector. Los rayos coincidentes comparten trayectoria y sus nombres se agrupan en la leyenda.
 
 El objeto del banco puede situarse por encima o por debajo del eje, o centrado simétricamente; su altura indica siempre el tamaño total.
 

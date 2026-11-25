@@ -174,11 +174,26 @@ class AppTests(unittest.TestCase):
         self.assertFalse(app.exception)
         self.assertTrue(any('Ejercicio correcto' in s.value for s in app.success))
 
-    def test_zero_default_and_complete_haz_from_tip_and_axis(self):
+    def test_default_ray_families_and_complete_haz_from_tip_and_axis(self):
         app = AppTest.from_file(APP, default_timeout=30).run()
         height = next(w for w in app.number_input if w.label == 'Altura total del objeto (mm)')
-        self.assertEqual(height.value, 0.)
-        height.set_value(5.)
+        self.assertEqual(height.value, 5.)
+        mode_select = next(w for w in app.selectbox if w.label == 'Modelo de rayos')
+        for mode in mode_select.options:
+            mode_select.select(mode).run()
+            self.assertFalse(app.exception)
+            plot = json.loads(app.get('plotly_chart')[1].proto.spec)
+            names = [t.get('name', '') for t in plot['data']]
+            for label in ['Principal · centro del stop', 'Marginal − · borde útil',
+                          'Marginal + · borde útil', 'Paralelo al eje', 'Rayo focal']:
+                self.assertTrue(any(name.startswith('y=5 · ') and label in name for name in names))
+            axial = [name for name in names if name.startswith('y=0 · Principal')]
+            self.assertEqual(len(axial), 1)
+            self.assertIn('Paralelo al eje / Rayo focal', axial[0])
+        height.set_value(0.).run()
+        names = [t.get('name', '') for t in json.loads(app.get('plotly_chart')[1].proto.spec)['data']]
+        self.assertIn('y=0 · Principal · centro del stop / Paralelo al eje / Rayo focal · dirigido hacia F', names)
+        next(w for w in app.number_input if w.label == 'Altura total del objeto (mm)').set_value(5.)
         next(w for w in app.multiselect if w.label == 'Rayos que se dibujan').set_value(['Haz']).run()
         self.assertFalse(app.exception)
         plot = json.loads(app.get('plotly_chart')[1].proto.spec)
