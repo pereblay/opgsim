@@ -40,6 +40,9 @@ class Boundary:
     n_left: float = 1.
     n_right: float = 1.
     focal: float = math.inf
+    finite: bool = False
+    invert_mirror: bool = False
+    launch_only: bool = False
 
     def intersect(self, point, direction, include_origin=False):
         minimum = -TOL if include_origin else TOL
@@ -50,10 +53,9 @@ class Boundary:
             t = (edge_x-point[0])/direction[0]
             if t > minimum:
                 q = point+t*direction
-                if self.kind == 'stop' or abs(q[1]) > self.aperture/2+TOL:
-                    candidates.append((t, q, np.array([1., 0.]), abs(q[1]) > self.aperture/2+TOL))
-                elif math.isinf(self.radius):
-                    candidates.append((t, q, np.array([1., 0.]), False))
+                outside = abs(q[1]) > self.aperture/2+TOL
+                if (not outside or not self.finite) and (self.kind == 'stop' or outside or math.isinf(self.radius)):
+                    candidates.append((t, q, np.array([1., 0.]), outside))
         if self.kind != 'stop' and not math.isinf(self.radius):
             center = np.array([self.x+self.radius, 0.])
             # Work relative to the vertex, avoiding subtraction of R² terms.
@@ -86,7 +88,7 @@ class Rim:
     name: str
     kind: str = 'rim'
 
-    def intersect(self, point, direction):
+    def intersect(self, point, direction, include_origin=False):
         if abs(direction[1]) < 1e-12:
             return None
         t = (self.y-point[1])/direction[1]
@@ -96,13 +98,39 @@ class Rim:
         return None
 
 
+@dataclass
+class PlacedSurface:
+    surface: Boundary | Rim
+    center: np.ndarray
+    rotation: np.ndarray
+
+    def intersect(self, point, direction, include_origin=False):
+        hit = self.surface.intersect(self.rotation.T @ (point-self.center),
+                                     self.rotation.T @ direction, include_origin)
+        if hit is None:
+            return None
+        distance, point, normal, clipped = hit
+        return distance, self.center+self.rotation @ point, self.rotation @ normal, clipped
+
+
 def geometry(elements, diameter, wavelength, aperture_x=0.):
-    build(elements, diameter, wavelength, aperture_x)  # Validate common optical parameters.
-    boundaries = [Boundary(aperture_x, math.inf, diameter, 'Abertura inicial', 'stop')]
+    spatial = any(e.positioned_off_axis for e in elements)
+    if spatial:
+        build([], diameter, wavelength, aperture_x)
+        for e in elements:
+            if not all(math.isfinite(v) for v in (e.position, e.height, e.tilt)):
+                raise ValueError(f'{e.name}: la posición y el giro deben ser finitos.')
+            build([replace(e, position=0.)], diameter, wavelength)
+    else:
+        build(elements, diameter, wavelength, aperture_x)
+    boundaries = [Boundary(aperture_x, math.inf, diameter, 'Abertura inicial', 'stop',
+                           launch_only=spatial)]
     # The first vertex may define x=0; its spherical cap can extend to x<0.
     last_extent = -math.inf
     for original in sorted(elements, key=lambda e: e.position):
-        e = replace(original, aperture=original.clear_aperture)
+        e = replace(original, aperture=original.clear_aperture,
+                    position=0. if spatial else original.position)
+        first_boundary = len(boundaries)
         if e.ideal_lens:
             extent1 = extent2 = e.position
             boundaries.append(Boundary(e.position, math.inf, e.aperture, e.name+' · lente delgada',
@@ -124,10 +152,23 @@ def geometry(elements, diameter, wavelength, aperture_x=0.):
                 boundaries.append(Boundary(extent2, math.inf, e.aperture, e.name+' · salida', 'stop'))
                 boundaries.extend(Rim(extent1, extent2, sign*e.aperture/2, e.name+' · pared') for sign in [-1, 1])
         else:
-            r = math.inf if e.kind == 'Espejo plano' else (-abs(e.r1) if e.kind == 'Espejo cóncavo' else abs(e.r1))
+            r = e.mirror_radius
             edge = e.position+float(sag(r, e.aperture/2))
             extent1, extent2 = min(e.position, edge), max(e.position, edge)
-            boundaries.append(Boundary(e.position, r, e.aperture, e.name, 'mirror'))
+            boundaries.append(Boundary(e.position, r, e.aperture, e.name, 'mirror',
+                                       invert_mirror=e.invert_mirror))
+        if spatial:
+            angle = math.radians(e.tilt)
+            c, s = math.cos(angle), math.sin(angle)
+            rotation = np.array([[c, -s], [s, c]])
+            center = np.array([original.position, original.height])
+            boundaries[first_boundary:] = [
+                PlacedSurface(replace(surface, finite=True)
+                              if isinstance(surface, Boundary) and surface.kind != 'stop'
+                              else surface, center, rotation)
+                for surface in boundaries[first_boundary:]
+            ]
+            continue
         if extent1+TOL < aperture_x < extent2-TOL and aperture_x != e.position:
             raise ValueError(f'El diafragma de apertura intersecta {e.name}; colócalo en un espacio libre.')
         if extent1 <= last_extent+TOL:
@@ -138,6 +179,8 @@ def geometry(elements, diameter, wavelength, aperture_x=0.):
 
 def physical_paraxial(elements, diameter, wavelength, object_x, thin_lens=False, aperture_x=0., fixed_as=False):
     """Gaussian reference along the axial itinerary, including return through lenses."""
+    if any(e.positioned_off_axis for e in elements):
+        raise ValueError('El cálculo paraxial matricial requiere un montaje centrado.')
     forward = build(elements, diameter, wavelength, aperture_x, thin_lens=thin_lens)
     mirror = next((e for e in sorted(elements, key=lambda e: e.position) if e.kind.startswith('Espejo')), None)
     if mirror is None:
@@ -171,18 +214,20 @@ def physical_paraxial(elements, diameter, wavelength, object_x, thin_lens=False,
     return result
 
 
-def trace_exact(boundaries, object_x, height, angle, xmin, xmax, max_events=100):
+def trace_exact(boundaries, object_x, height, angle, xmin, xmax, max_events=100, *, exit_length=None):
     point = np.array([object_x, height], dtype=float)
     direction = np.array([math.cos(angle), math.sin(angle)])
     points, events = [point.copy()], []
     n = 1.
     blocked = None
     processed = set()
+    launch_aperture_crossed = None
     for _ in range(max_events):
         candidates = []
         for boundary in boundaries:
-            hit = (boundary.intersect(point, direction, include_origin=id(boundary) not in processed)
-                   if isinstance(boundary, Boundary) else boundary.intersect(point, direction))
+            if boundary is launch_aperture_crossed:
+                continue
+            hit = boundary.intersect(point, direction, include_origin=id(boundary) not in processed)
             if hit is not None:
                 candidates.append((hit[0], boundary, hit))
         if not candidates:
@@ -192,20 +237,31 @@ def trace_exact(boundaries, object_x, height, angle, xmin, xmax, max_events=100)
             processed.clear()
         processed.add(id(boundary))
         points.append(q.copy())
+        surface = boundary.surface if isinstance(boundary, PlacedSurface) else boundary
+        if isinstance(surface, Boundary) and surface.launch_only:
+            launch_aperture_crossed = boundary
         incoming = direction.copy()
         n_before = n
         if clipped:
-            blocked = boundary.name
+            blocked = surface.name
             event = 'Bloqueo'
-        elif boundary.kind == 'mirror':
-            direction = reflect(direction, normal)
-            event = 'Reflexión (100 %)'
-        elif boundary.kind == 'thin_lens':
-            slope = direction[1]/abs(direction[0]) - q[1]/boundary.focal
-            direction = unit([math.copysign(1., direction[0]), slope])
+        elif surface.kind == 'mirror':
+            from_left = np.dot(direction, normal) > 0
+            if from_left == surface.invert_mirror:
+                blocked = surface.name + ' · cara no reflectora'
+                event = 'Bloqueo en cara no reflectora'
+            else:
+                direction = reflect(direction, normal)
+                event = 'Reflexión (100 %)'
+        elif surface.kind == 'thin_lens':
+            tangent = np.array([-normal[1], normal[0]])
+            center = boundary.center if isinstance(boundary, PlacedSurface) else np.array([surface.x, 0.])
+            axial = np.dot(direction, normal)
+            slope = np.dot(direction, tangent)/abs(axial) - np.dot(q-center, tangent)/surface.focal
+            direction = unit(math.copysign(1., axial)*normal+slope*tangent)
             event = 'Lente delgada'
-        elif boundary.kind == 'refraction':
-            target = boundary.n_right if np.dot(direction, normal) > 0 else boundary.n_left
+        elif surface.kind == 'refraction':
+            target = surface.n_right if np.dot(direction, normal) > 0 else surface.n_left
             direction, tir = refract(direction, normal, n, target)
             if not tir:
                 n = target
@@ -214,7 +270,7 @@ def trace_exact(boundaries, object_x, height, angle, xmin, xmax, max_events=100)
             event = 'Abertura'
         cos_inc = np.clip(abs(np.dot(incoming, normal)), 0., 1.)
         cos_out = np.clip(abs(np.dot(direction, normal)), 0., 1.)
-        events.append(dict(surface=boundary.name, event=event, point=q.copy(), incoming=incoming,
+        events.append(dict(surface=surface.name, event=event, point=q.copy(), incoming=incoming,
                            outgoing=direction.copy(), normal=normal, n_before=n_before, n_after=n,
                            incidence=math.degrees(math.acos(cos_inc)), outgoing_angle=math.degrees(math.acos(cos_out))))
         point = q
@@ -224,7 +280,9 @@ def trace_exact(boundaries, object_x, height, angle, xmin, xmax, max_events=100)
         blocked = 'Límite de interacciones (posible rayo atrapado)'
     exit_point, exit_direction = point.copy(), direction.copy()
     if blocked is None:
-        if abs(direction[0]) > 1e-10:
+        if exit_length is not None:
+            length = exit_length
+        elif abs(direction[0]) > 1e-10:
             target_x = xmax if direction[0] > 0 else xmin
             length = (target_x-point[0])/direction[0]
         else:

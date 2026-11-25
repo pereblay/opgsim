@@ -173,6 +173,37 @@ class AppTests(unittest.TestCase):
                          if 'Focal efectiva (mm)' in item.value.columns)
             self.assertEqual(table['Focal efectiva (mm)'].tolist()[1:3], ['35.000 mm', '-25.000 mm'])
 
+    def test_rotated_mirror_and_off_axis_ocular(self):
+        from dataclasses import asdict
+        from optics import Element
+
+        app = AppTest.from_file(APP, default_timeout=30).run()
+        app.session_state['elements'] = [
+            asdict(Element(name='Primario', kind='Espejo cóncavo', position=500., r1=200., aperture=40.)),
+            asdict(Element(name='Secundario', kind='Espejo plano', position=425., tilt=45., aperture=12.,
+                           invert_mirror=True)),
+            asdict(Element(name='Ocular', kind='Lente delgada convergente', position=425., height=50.,
+                           tilt=90., aperture=20., focal_length=25.)),
+        ]
+        next(w for w in app.number_input if w.label == 'Diámetro de abertura inicial (mm)').set_value(40.)
+        next(r for r in app.radio if r.label == 'Origen de los rayos').set_value('Paralelos desde infinito')
+        next(s for s in app.selectbox if s.label == 'Modelo de rayos').select('Paraxial · lente delgada').run()
+        self.assertFalse(app.exception)
+        self.assertFalse(app.error)
+        self.assertTrue(any('usa el trazado exacto' in item.value for item in app.info))
+        interactions = next(item.value for item in app.dataframe if 'Interacción' in item.value.columns)
+        self.assertIn('Bloqueo en cara no reflectora', interactions['Interacción'].values)
+        ocular = interactions[interactions['Superficie'] == 'Ocular · lente delgada']
+        self.assertFalse(ocular.empty)
+        for y in ocular['y (mm)']:
+            self.assertAlmostEqual(y, 50.)
+        states = next(item.value for item in app.dataframe if 'Estado' in item.value.columns)
+        for y in (-10., 10.):
+            self.assertEqual(states.loc[states['Origen y (mm)'] == y, 'Estado'].item(), 'Sale a 90.0°')
+        ray = ocular.iloc[0]['Rayo']
+        self.assertEqual(interactions[interactions['Rayo'] == ray]['Superficie'].tolist(),
+                         ['Primario', 'Secundario', 'Ocular · lente delgada'])
+
     def test_matrix_panel_element_and_input(self):
         app = AppTest.from_file(APP, default_timeout=30).run()
         self.assertTrue(next(s for s in app.selectbox if s.label == 'Modelo de rayos').value.startswith('Exacto'))

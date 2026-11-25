@@ -76,7 +76,7 @@ with st.sidebar:
         st.rerun()
 
 st.subheader('1 · Elementos del sistema')
-st.caption('La posición x de cada elemento se edita de forma independiente y admite ambos signos. Altura = diámetro útil, centrado en el eje.')
+st.caption('Edita la posición (x, y), el diámetro útil y el giro de cada elemento. El giro positivo es antihorario.')
 kind = st.selectbox('Tipo de elemento', TYPES)
 new_element = Element(name=f'E{len(st.session_state.elements)+1}', kind=kind)
 with st.form('add', clear_on_submit=False):
@@ -103,6 +103,12 @@ with st.form('add', clear_on_submit=False):
         value = fields[side].number_input(label, value=radius if signed else abs(radius),
                                           min_value=None if signed else 0., step=1., key=f'add_r{side}_{kind}')
         setattr(new_element, f'r{side}', value if signed else math.copysign(value, radius))
+    pose = st.columns(3)
+    new_element.height = pose[0].number_input('Posición y en el banco (mm)', value=0., step=5.)
+    new_element.tilt = pose[1].number_input('Giro del elemento (°)', value=0., step=5.)
+    if kind.startswith('Espejo'):
+        new_element.invert_mirror = pose[2].checkbox('Invertir cara reflectora',
+            help='Activa la cara hacia +x local en lugar de la cara hacia −x local.')
     submitted = st.form_submit_button('Añadir elemento')
     if submitted:
         if any(getattr(new_element, f'r{i}') == 0 for i, r in enumerate(defaults, 1) if math.isfinite(r)):
@@ -115,6 +121,9 @@ columns = {
     'name': st.column_config.TextColumn('Nombre', required=True),
     'kind': st.column_config.SelectboxColumn('Tipo', options=TYPES, required=True, width='medium'),
     'position': st.column_config.NumberColumn('Posición x (mm)', required=True),
+    'height': st.column_config.NumberColumn('Posición y (mm)', required=True),
+    'tilt': st.column_config.NumberColumn('Giro (°)', required=True),
+    'invert_mirror': st.column_config.CheckboxColumn('Invertir cara reflectora', default=False),
     'aperture': st.column_config.NumberColumn('Altura / Ø (mm)', min_value=.01, required=True),
     'thickness': st.column_config.NumberColumn('Grosor (mm)', min_value=0., required=True),
     'index': st.column_config.NumberColumn('n a 550 nm', min_value=1., required=True, format='%.4f'),
@@ -123,7 +132,9 @@ columns = {
     'focal_length': st.column_config.NumberColumn('Focal |f′| (mm) · solo lente delgada', min_value=.01),
     'dispersion': st.column_config.NumberColumn('Cauchy B (µm²)', min_value=0., required=True, format='%.5f'),
 }
-element_rows = [dict(row, focal_length=row.get('focal_length', Element.focal_length)) for row in st.session_state.elements]
+pose_defaults = dict(height=0., tilt=0., invert_mirror=False, focal_length=Element.focal_length)
+element_rows = [dict(row, **{name: row.get(name, value) for name, value in pose_defaults.items()})
+                for row in st.session_state.elements]
 edited = st.data_editor(element_rows, column_config=columns, num_rows='fixed', hide_index=True, width="stretch", key=f'editor_{st.session_state.version}')
 # The current table is the source for subsequent additions and removals.
 st.session_state.elements = edited
@@ -138,9 +149,9 @@ with st.expander('Convenciones, índices y límites del modelo'):
     st.markdown("""- **Modo paraxial:** aplica y₂ = y₁ + t·u y n₂u₂ = n₁u₁ − y·(n₂−n₁)/R en los planos de vértice. En aire, los puntos nodales coinciden con H/H′: el rayo nodal conserva su ángulo de entrada/salida, pero puede desplazarse lateralmente en una lente gruesa.
 - **Lente delgada:** concentra la potencia de cada lente en un único plano en su posición x, con el diámetro indicado y sin propagación interna. Los espejos se tratan paraxialmente en su vértice.
 - **Elementos de lente delgada ideal:** se definen por el módulo de su focal imagen. El tipo convergente usa f′ positiva y el divergente f′ negativa. Su plano ideal se aplica en todos los modelos de rayos.
-- **Modo exacto:** intersecciones con las superficies esféricas, ley vectorial de Snell y reflexión especular. Un espejo ideal refleja el 100 % del rayo. El trazado busca la siguiente superficie en la dirección real, incluso al regresar a través de lentes anteriores.
+- **Modo exacto:** intersecciones con las superficies esféricas, ley vectorial de Snell y reflexión especular. La cara activa del espejo refleja toda la luz y su reverso es opaco. El trazado busca la siguiente superficie en la dirección real, incluso al regresar a través de lentes anteriores.
 - **Índice por defecto: 1.** Si ambos medios tienen igual índice, no hay desviación; tampoco la hay en incidencia normal. Los ejemplos de lentes usan n = 1,5. La dispersión opcional sigue n(λ) = n(550 nm) + B·[1/λ² − 1/0,55²], con λ en µm.
-- **Radios:** el signo es positivo si el centro de curvatura está a la derecha. Los tipos predefinidos asignan los signos; «Lente personalizada» conserva los introducidos. Todos los elementos están centrados en el eje y los espejos son perpendiculares a él en su vértice.
+- **Radios:** el signo es positivo si el centro de curvatura está a la derecha. Los tipos predefinidos asignan los signos; «Lente personalizada» conserva los introducidos. Los radios se aplican en el sistema local de cada elemento. Invertir un espejo cambia su lado activo y voltea su perfil curvo.
 - **Aberturas y bordes:** las monturas son opacas fuera de la abertura útil; también se interceptan los bordes laterales de lentes y diafragmas. Las superficies deben estar separadas físicamente.
 - **Resultados gaussianos:** focal, imagen, pupilas y planos principales son aproximaciones paraxiales del recorrido axial, incluido el doble paso cuando hay espejo. Los rayos exactos pueden no converger en un único punto debido a las aberraciones de las superficies esféricas.
 - **Rayo principal (chief):** desde el extremo del objeto al centro del stop. **Marginales:** desde ese mismo punto a los dos bordes útiles del haz; también se dibuja la familia axial. Cada punto del objeto emite su principal y los dos límites de su haz. En modo exacto se buscan sobre las superficies reales; O′ indica el plano de menor dispersión del haz y O′G la referencia gaussiana. Un aspa indica un bloqueo; las prolongaciones virtuales no transportan luz.
@@ -155,25 +166,37 @@ try:
     if finite_source and obj >= 0:
         raise ValueError('Sitúa el objeto a la izquierda del primer elemento y del diafragma de apertura.')
     elements = [Element(**dict(row, position=row['position']-origin)) for row in edited]
-    if not thin_lens:
+    spatial = any(e.positioned_off_axis for e in elements)
+    if spatial:
+        if not exact:
+            st.info('El montaje girado, desplazado o con cara reflectora invertida usa el trazado exacto.')
+        exact, thin_lens = True, False
+        if source_mode == 'Desde el foco F':
+            st.info('El foco axial del conjunto requiere un banco centrado. Se usa un haz paralelo desde infinito.')
+            source_mode = 'Paralelos desde infinito'
         boundaries = geometry(elements, diameter, wavelength, aperture_x)
-    result = physical_paraxial(elements, diameter, wavelength, obj, aperture_x=aperture_x, fixed_as=not auto_as, thin_lens=thin_lens)
-    if source_mode == 'Paralelos desde infinito':
-        result = physical_paraxial(elements, diameter, wavelength, None, aperture_x=aperture_x, fixed_as=not auto_as, thin_lens=thin_lens)
-    elif source_mode == 'Desde el foco F':
-        if result['front_focus'] is None:
-            st.info('El sistema es afocal: no hay un foco F finito. Selecciona rayos paralelos desde infinito o añade potencia óptica.')
-            st.stop()
-        result = physical_paraxial(elements, diameter, wavelength, result['front_focus'], aperture_x=aperture_x, fixed_as=not auto_as, thin_lens=thin_lens)
-    surfaces = result['path']
+        foci = []
+    else:
+        if not thin_lens:
+            boundaries = geometry(elements, diameter, wavelength, aperture_x)
+        result = physical_paraxial(elements, diameter, wavelength, obj, aperture_x=aperture_x, fixed_as=not auto_as, thin_lens=thin_lens)
+        if source_mode == 'Paralelos desde infinito':
+            result = physical_paraxial(elements, diameter, wavelength, None, aperture_x=aperture_x, fixed_as=not auto_as, thin_lens=thin_lens)
+        elif source_mode == 'Desde el foco F':
+            if result['front_focus'] is None:
+                st.info('El sistema es afocal: no hay un foco F finito. Selecciona rayos paralelos desde infinito o añade potencia óptica.')
+                st.stop()
+            result = physical_paraxial(elements, diameter, wavelength, result['front_focus'], aperture_x=aperture_x, fixed_as=not auto_as, thin_lens=thin_lens)
+        surfaces = result['path']
     for element in elements:
         if not (thin_lens and element.lens) and element.clear_aperture < element.aperture-1e-8:
             st.info(f'{element.name}: altura útil corregida de {element.aperture:g} a {element.clear_aperture:.6g} mm por el cruce o el límite de sus superficies.')
-    foci = focal_points(elements, diameter, wavelength, obj, aperture_x, thin_lens=thin_lens)
-    if exact:
-        optical_elements = [e for e in sorted(elements, key=lambda e: e.position) if e.kind != 'Diafragma']
-        for focus, subsystem in zip(foci, [[e] for e in optical_elements]+[elements]):
-            focus['exact_back'] = exact_back_focus(subsystem, diameter, wavelength, ray_count, aperture_x)
+    if not spatial:
+        foci = focal_points(elements, diameter, wavelength, obj, aperture_x, thin_lens=thin_lens)
+        if exact:
+            optical_elements = [e for e in sorted(elements, key=lambda e: e.position) if e.kind != 'Diafragma']
+            for focus, subsystem in zip(foci, [[e] for e in optical_elements]+[elements]):
+                focus['exact_back'] = exact_back_focus(subsystem, diameter, wavelength, ray_count, aperture_x)
 except (ValueError, TypeError, KeyError, ZeroDivisionError) as error:
     st.error(f'Revisa la configuración: {error}')
     st.stop()
@@ -184,7 +207,12 @@ bottom, top = {'Por encima del eje': (0., height),
 end = max([aperture_x]+[e.position+e.thickness if (e.lens and not thin_lens and not e.ideal_lens) or e.kind == 'Diafragma' else e.position for e in elements]) + extension
 start_x = obj - extension*.25
 source_rays = None
-if not finite_source:
+if spatial and not finite_source:
+    obj = min([aperture_x]+[e.position-e.aperture-e.thickness for e in elements])-extension*.5
+    source_rays = [(y, 0.) for y in np.linspace(-diameter/2, diameter/2, ray_count)]
+    bottom = top = 0.
+    start_x = obj-extension*.25
+elif not finite_source:
     obj, source_rays = axial_source_bundle(result, 'infinity' if source_mode == 'Paralelos desde infinito' else 'focus', ray_count, -extension*.5)
     bottom = top = 0.
     start_x = obj-extension*.25
@@ -218,6 +246,7 @@ def base_figure():
             fig.add_trace(go.Scatter(x=[x+origin]*2, y=[sign*a, sign*(a+max(diameter*.12, 2))], mode='lines', line=dict(color='#475569', width=6), name=name, showlegend=False, hovertemplate=name+'<extra></extra>'))
     aperture(aperture_x, diameter, 'Abertura inicial')
     for e in sorted(elements, key=lambda e: e.position):
+        first_trace = len(fig.data)
         model_aperture = e.aperture if thin_lens and e.lens else e.clear_aperture
         y = np.linspace(-model_aperture/2, model_aperture/2, 1001)
         if e.lens and (thin_lens or e.ideal_lens):
@@ -233,13 +262,24 @@ def base_figure():
             if e.thickness:
                 aperture(e.position+e.thickness, e.aperture, e.name)
         else:
-            r = math.inf if e.kind == 'Espejo plano' else (-abs(e.r1) if e.kind == 'Espejo cóncavo' else abs(e.r1))
+            r = e.mirror_radius
             mirror_x = np.full_like(y, e.position) if thin_lens else e.position+sag(r, y)
-            fig.add_trace(go.Scatter(x=mirror_x+origin, y=y, mode='lines', line=dict(color='#64748b', width=5), name=e.name))
+            if spatial:
+                backing = -1. if e.invert_mirror else 1.
+                fig.add_trace(go.Scatter(x=mirror_x+origin+backing, y=y, mode='lines',
+                                         line=dict(color='#94a3b8', width=5), name=e.name+' · reverso',
+                                         showlegend=False))
+            fig.add_trace(go.Scatter(x=mirror_x+origin, y=y, mode='lines',
+                                     line=dict(color='#334155', width=3), name=e.name,
+                                     hovertemplate=e.name+' · cara reflectora<extra></extra>'))
         if not exact and not thin_lens and e.lens and not e.ideal_lens:
             for vx in [e.position, e.position+e.thickness]:
                 fig.add_trace(go.Scatter(x=[vx+origin]*2, y=[-e.clear_aperture/2, e.clear_aperture/2], mode='lines', line=dict(color='#94a3b8', width=1), showlegend=False, hovertemplate='Plano de vértice paraxial<extra></extra>'))
-        fig.add_annotation(x=e.position+origin, y=e.aperture/2+3, text=e.name, showarrow=False, font=dict(size=11))
+        if spatial:
+            for trace in fig.data[first_trace:]:
+                x, y = e.bank_coordinates(np.asarray(trace.x)-e.position-origin, np.asarray(trace.y))
+                trace.x, trace.y = x+origin, y
+        fig.add_annotation(x=e.position+origin, y=e.height+e.aperture/2+3, text=e.name, showarrow=False, font=dict(size=11))
     for i, focus in enumerate(foci):
         if exact and focus.get('exact_back') is not None:
             fx, fy, rms = focus['exact_back']
@@ -257,7 +297,8 @@ def base_figure():
     fig.update_layout(template='plotly_white', height=350, margin=dict(l=25, r=20, t=30, b=30), xaxis_title='Posición física x (mm)', yaxis_title='Altura (mm)', legend=dict(orientation='h', y=-.25, groupclick='togglegroup'), hovermode='closest', font=dict(family='Arial, sans-serif', color='#242222'), paper_bgcolor='#FFFFFF', plot_bgcolor='#FCFAF8')
     fig.update_xaxes(gridcolor='#E9E2DC', zerolinecolor='#A99A8D')
     fig.update_yaxes(gridcolor='#E9E2DC', zerolinecolor='#A99A8D')
-    fig.update_xaxes(range=[obj+origin-10, end+origin])
+    if not spatial:
+        fig.update_xaxes(range=[obj+origin-10, end+origin])
     if equal_scale:
         fig.update_yaxes(scaleanchor='x', scaleratio=1)
     return fig
@@ -265,12 +306,19 @@ def base_figure():
 st.subheader('2 · Disposición de los elementos')
 st.plotly_chart(base_figure(), width="stretch")
 st.subheader('3 · Trazado')
-st.caption('Trayectorias reales en continuo; prolongaciones virtuales en discontinuo.')
+if spatial:
+    st.caption('Montaje fuera de eje. El haz se muestrea en la abertura inicial; las cruces indican dónde se bloquea un rayo.')
+else:
+    st.caption('Trayectorias reales en continuo; prolongaciones virtuales en discontinuo.')
 fig = base_figure()
 fig.update_layout(height=520)
 records, interaction_records, exact_images = [], [], []
 for group, h in enumerate(sorted(set([bottom, 0., top])) if finite_source else [0.]):
-    if finite_source:
+    if spatial and finite_source:
+        targets = np.linspace(-diameter/2, diameter/2, ray_count)
+        launches = [(f'Haz incidente {i+1}', h, (y-h)/(aperture_x-obj))
+                    for i, y in enumerate(targets)]
+    elif finite_source:
         p = result['pre'][result['stop']] @ np.array([[1., -obj], [0., 1.]])
         a, b = p[0]
         rays = []
@@ -305,7 +353,9 @@ for group, h in enumerate(sorted(set([bottom, 0., top])) if finite_source else [
     group_rays = []
     for label, h, slope in launches:
         theta = math.atan(slope)
-        ray = trace_exact(boundaries, obj, h, theta, start_x, end) if exact else trace_gaussian(result, obj, h, slope, start_x, end)
+        ray = (trace_exact(boundaries, obj, h, theta, start_x, end,
+                           exit_length=extension if spatial else None)
+               if exact else trace_gaussian(result, obj, h, slope, start_x, end))
         group_rays.append(ray)
         ray_color = colors[group]
         name = f'y={h:g} · {label}'
@@ -313,7 +363,7 @@ for group, h in enumerate(sorted(set([bottom, 0., top])) if finite_source else [
         if label != 'Haz':
             for event in ray['events']:
                 if event['event'] != 'Abertura':
-                    interaction_records.append({'Rayo': name, 'Superficie': event['surface'], 'Interacción': event['event'], 'x (mm)': event['point'][0], 'y (mm)': event['point'][1], 'n incidente': event['n_before'], 'n saliente': event['n_after'], 'Incidencia / normal (°)': event['incidence'], 'Salida / normal (°)': event['outgoing_angle'], 'u incidente (paraxial)': event.get('u_before'), 'u saliente (paraxial)': event.get('u_after')})
+                    interaction_records.append({'Rayo': name, 'Superficie': event['surface'], 'Interacción': event['event'], 'x (mm)': event['point'][0]+origin if spatial else event['point'][0], 'y (mm)': event['point'][1], 'n incidente': event['n_before'], 'n saliente': event['n_after'], 'Incidencia / normal (°)': event['incidence'], 'Salida / normal (°)': event['outgoing_angle'], 'u incidente (paraxial)': event.get('u_before'), 'u saliente (paraxial)': event.get('u_after')})
         if ray['blocked']:
             fig.add_trace(go.Scatter(x=[ray['x'][-1]+origin], y=[ray['y'][-1]], mode='markers', marker=dict(symbol='x', color=ray_color, size=8), legendgroup=name, showlegend=False, hovertemplate=f'Interceptado: {ray["blocked"]}<extra></extra>'))
         elif not exact and show_virtual and result['image_x'] is not None and not result['image_real']:
@@ -324,9 +374,15 @@ for group, h in enumerate(sorted(set([bottom, 0., top])) if finite_source else [
                 if distance < 0:
                     fig.add_trace(go.Scatter(x=[q[0]+origin, ximage+origin], y=[q[1], q[1]+distance*d[1]], mode='lines', line=dict(color=ray_color, dash='dash', width=1), opacity=.4, legendgroup=name, showlegend=False))
         reflections = sum('Reflexión' in e['event'] for e in ray['events'])
-        records.append({'Origen y (mm)': h, 'Rayo': label, ('Ángulo inicial (rad)' if exact else 'Pendiente inicial u (paraxial)'): theta if exact else slope, 'Reflexiones': reflections, 'Estado': ('Sale a la derecha' if ray['exit_direction'][0] > 0 else 'Sale a la izquierda') if not ray['blocked'] else 'Interceptado: '+ray['blocked']})
+        dx, dy = ray['exit_direction']
+        status = ('Interceptado: '+ray['blocked'] if ray['blocked'] else
+                  f'Sale a {math.degrees(math.atan2(dy, dx)):.1f}°' if spatial else
+                  'Sale a la derecha' if dx > 0 else 'Sale a la izquierda')
+        records.append({'Origen y (mm)': h, 'Rayo': label,
+                        ('Ángulo inicial (rad)' if exact else 'Pendiente inicial u (paraxial)'): theta if exact else slope,
+                        'Reflexiones': reflections, 'Estado': status})
 
-    if exact:
+    if exact and not spatial:
         image = ray_image(group_rays)
         if image is not None:
             ix, iy, rms = image
@@ -340,6 +396,19 @@ for group, h in enumerate(sorted(set([bottom, 0., top])) if finite_source else [
                     d = ray['exit_direction']
                     if ray['blocked'] is None and abs(d[0]) > EPS and (ix-q[0])/d[0] < 0:
                         fig.add_trace(go.Scatter(x=[q[0]+origin, ix+origin], y=[q[1], q[1]+(ix-q[0])*d[1]/d[0]], mode='lines', line=dict(color=colors[group], dash='dash', width=1), opacity=.4, legendgroup=f'O′ · haz y={h:g}', showlegend=False))
+
+def download_configuration():
+    export = dict(tracing_mode="Exacto · Snell y reflexión" if spatial else tracing_mode, as_mode="fixed" if spatial or not auto_as else "automatic", source_mode=source_mode, object_distance=(obj if finite_source else None), source_focus=(result['front_focus'] if source_mode == 'Desde el foco F' else None), object_height=height, placement=placement, reference_position=origin, aperture_position=aperture_position, initial_diameter=diameter, wavelength_nm=wavelength, elements=edited)
+    st.download_button('Descargar configuración JSON', json.dumps(export, ensure_ascii=False, indent=2), 'sistema-optico.json', 'application/json')
+
+
+if spatial:
+    st.plotly_chart(fig, width="stretch")
+    st.caption('La matriz ABCD y los focos gaussianos del banco se calculan para sistemas centrados.')
+    st.dataframe(records, hide_index=True, width="stretch")
+    st.dataframe(interaction_records, hide_index=True, width="stretch")
+    download_configuration()
+    st.stop()
 
 as_plane = surfaces[result['stop']]
 as_x = as_plane.x
@@ -457,6 +526,5 @@ with st.expander('Matrices de propagación e interacción, paso a paso'):
         st.latex('T_{'+str(i)+'}='+latex_matrix(row['propagation'])+r',\quad S_{'+str(i)+'}='+latex_matrix(row['interface']))
     st.caption('M = Sₖ Tₖ … S₂ T₂ S₁ T₁. Las desviaciones matriciales se aplican en planos de vértice; el trazado exacto de la gráfica utiliza las superficies curvas y Snell, no estas matrices.')
 
-export = dict(tracing_mode=tracing_mode, as_mode="automatic" if auto_as else "fixed", source_mode=source_mode, object_distance=(obj if finite_source else None), source_focus=(result['front_focus'] if source_mode == 'Desde el foco F' else None), object_height=height, placement=placement, reference_position=origin, aperture_position=aperture_position, initial_diameter=diameter, wavelength_nm=wavelength, elements=edited)
-st.download_button('Descargar configuración JSON', json.dumps(export, ensure_ascii=False, indent=2), 'sistema-optico.json', 'application/json')
+download_configuration()
 st.caption('Referencias: [OptiCampus · trazado de lentes delgadas](https://opticampus.opti.vision/cecourse.php?url=ray_tracing/) · [Edmund Optics · trazado paraxial](https://www.edmundoptics.com/knowledge-center/application-notes/optics/geometrical-optics-101-paraxial-ray-tracing-calculations/) · [LibreTexts · rayos de construcción](https://phys.libretexts.org/Bookshelves/University_Physics/Calculus-Based_Physics_%28Schnick%29/Volume_B%3A_Electricity_Magnetism_and_Optics/B28%3A_Thin_Lenses_-_Ray_Tracing) · [reflexión y Snell](https://www.pbr-book.org/4ed/Reflection_Models/Specular_Reflection_and_Transmission) · [matrices ABCD](https://www.rp-photonics.com/abcd_matrix.html) · [pupilas de entrada y salida](https://www.rp-photonics.com/entrance_and_exit_pupil.html)')

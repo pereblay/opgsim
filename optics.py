@@ -22,6 +22,27 @@ class Element:
 
     focal_length: float = 50.0  # positive magnitude in mm, for ideal lenses
 
+    height: float = 0.0
+    tilt: float = 0.0  # degrees counterclockwise in the meridional plane
+    invert_mirror: bool = False
+
+    @property
+    def positioned_off_axis(self):
+        return self.height != 0. or self.tilt % 360. != 0. or (
+            self.kind.startswith('Espejo') and self.invert_mirror)
+
+    @property
+    def mirror_radius(self):
+        if self.kind == 'Espejo plano':
+            return math.inf
+        radius = -abs(self.r1) if self.kind == 'Espejo cóncavo' else abs(self.r1)
+        return -radius if self.invert_mirror else radius
+
+    def bank_coordinates(self, x, y):
+        angle = math.radians(self.tilt)
+        c, s = math.cos(angle), math.sin(angle)
+        return self.position+c*x-s*y, self.height+s*x+c*y
+
     @property
     def ideal_lens(self):
         return self.kind in ('Lente delgada convergente', 'Lente delgada divergente')

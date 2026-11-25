@@ -9,6 +9,26 @@ class ExactRayTests(unittest.TestCase):
     def trace(self, elements, y=0., angle=0.):
         return trace_exact(geometry(elements, 100, 550), -120, y, angle, -180, 300)
 
+    def test_tilted_glass_uses_rotated_normals_on_both_faces(self):
+        plate = Element(kind='Lente personalizada', position=20., tilt=30., aperture=20.,
+                        r1=math.inf, r2=math.inf, thickness=4., index=1.5)
+        ray = self.trace([plate])
+        refractions = [e for e in ray['events'] if e['event'] == 'Refracción']
+        self.assertEqual(len(refractions), 2)
+        self.assertAlmostEqual(refractions[0]['incidence'], 30.)
+        self.assertAlmostEqual(refractions[0]['outgoing_angle'], math.degrees(math.asin(1./3.)))
+        np.testing.assert_allclose(ray['exit_direction'], [1., 0.], atol=1e-12)
+
+    def test_inverted_curved_mirror_reflects_from_the_right(self):
+        mirror = Element(kind='Espejo cóncavo', position=20., r1=60., invert_mirror=True)
+        boundaries = geometry([mirror], 100., 550.)
+        front = trace_exact(boundaries, 100., 2., math.pi, -180., 300.)
+        self.assertIsNone(front['blocked'])
+        self.assertGreater(front['exit_point'][0], mirror.position)
+        self.assertGreater(front['exit_direction'][0], 0.)
+        back = self.trace([mirror], y=2.)
+        self.assertIn('cara no reflectora', back['blocked'])
+
     def test_movable_stop_between_lens_and_mirror(self):
         elements = [Element(position=0., index=1.5), Element(kind='Espejo plano', position=60.)]
         for x in (15., 32.):
